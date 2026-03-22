@@ -1,0 +1,68 @@
+Project: Dart Master bot
+Version: v1 (simple version)
+Goal: single-scale template matching bot for Dart Master
+
+GENERAL SETUP
+-------------
+Operating system: Windows 11 Pro
+Monitor resolution: 3840x2400
+OS display scaling: 250% (default)
+Chrome zoom: 100%
+Chrome position: always snapped to the right half of the screen
+Chrome window size: right half of primary monitor
+Browser: Google Chrome
+
+GAME SETUP
+----------
+Game URL: https://www.marketjs.com/item/dart-master/
+Game start mode: manual start
+Bot start mode: run python script after the game is started
+Bot stop mode (v1): q in debug window or Ctrl+C in terminal
+
+FILES
+-----
+Raw captures:
+- assets/raw_captures/game_roi_01.png
+- assets/raw_captures/game_roi_02.png
+
+Templates:
+- assets/templates/dartboard_main.png
+- assets/templates/dartboard_alt_01.png
+
+TEMPLATE NOTES
+--------------
+dartboard_main.png:
+- cropped manually from game_roi_01.png
+- no resizing
+- no rotation
+- no filtering
+- tight crop around full dartboard
+
+dartboard_alt_01.png:
+- cropped manually from game_roi_02.png
+- no resizing
+- no rotation
+- no filtering
+- tight crop around full dartboard
+
+ROI STATUS
+----------
+ROI measured: not yet
+ROI meaning: actual game area inside Chrome window, not whole desktop
+ROI coordinates: left=<not yet>, top=<not yet>, width=<not yet>, height=<not yet>
+
+INVARIANTS
+----------
+- Use the same monitor every time
+- Use the same OS display scaling every time
+- Use Chrome zoom 100% every time
+- Keep Chrome on the right half of the screen every time
+- Do not resize the browser randomly
+- Do not change page zoom
+- Do not change monitor arrangement during testing
+
+SESSION NOTES
+-------------
+- Version 1 uses manual game start
+- Bot will only click targets during gameplay
+- Start/restart button automation will be added later if needed
