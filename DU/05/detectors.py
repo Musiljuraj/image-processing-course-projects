@@ -11,8 +11,10 @@ Current stage:
 - mouth/smile detection inside lower face ROI implemented
 - combined face-parts detection implemented
 
-Not implemented yet:
-- eye-state classification support logic
+Current speed-oriented changes:
+- profile cascades run only if frontal detection fails
+- mouth detection can be switched on/off from main.py
+- face detection can run on a downscaled grayscale frame
 """
 
 import math
@@ -23,7 +25,7 @@ import cv2
 # Basic detector parameters
 # ---------------------------------------------------------------------
 
-FACE_SCALE_FACTOR = 1.15 #1.1
+FACE_SCALE_FACTOR = 1.15
 FACE_MIN_NEIGHBORS = 5
 FACE_MIN_SIZE = (30, 30)
 
@@ -31,7 +33,7 @@ FACE_MERGE_IOU_THRESHOLD = 0.30
 FACE_CONTINUITY_IOU_THRESHOLD = 0.10
 FACE_CONTINUITY_DISTANCE_FACTOR = 0.60
 
-EYE_SCALE_FACTOR = 1.15 #1.05
+EYE_SCALE_FACTOR = 1.15
 EYE_MIN_NEIGHBORS = 5
 EYE_MERGE_IOU_THRESHOLD = 0.20
 
@@ -46,7 +48,7 @@ EYE_MAX_HEIGHT_RATIO = 0.30
 
 MAX_EYE_COUNT = 2
 
-MOUTH_SCALE_FACTOR = 1.15 #1.10
+MOUTH_SCALE_FACTOR = 1.15
 MOUTH_MIN_NEIGHBORS = 15
 MOUTH_MERGE_IOU_THRESHOLD = 0.25
 
@@ -247,6 +249,63 @@ def _extract_face_roi(gray_frame, face_box):
     return face_roi, (x1, y1, x2, y2)
 
 
+def _prepare_downscaled_gray_frame(gray_frame, downscale_factor):
+    """
+    Create a smaller grayscale frame for face detection.
+
+    If downscale_factor is 1.0 or higher, the original frame is returned.
+    """
+
+    if downscale_factor >= 1.0:
+        return gray_frame, 1.0
+
+    if downscale_factor <= 0.0:
+        raise ValueError("downscale_factor must be greater than 0")
+
+    downscaled_gray = cv2.resize(
+        gray_frame,
+        None,
+        fx=downscale_factor,
+        fy=downscale_factor,
+        interpolation=cv2.INTER_AREA
+    )
+
+    return downscaled_gray, downscale_factor
+
+
+def _scale_size_for_downscaled_frame(size, downscale_factor):
+    """
+    Scale a size tuple from original-frame coordinates to downscaled-frame
+    coordinates.
+    """
+
+    width, height = size
+
+    scaled_width = max(1, int(round(width * downscale_factor)))
+    scaled_height = max(1, int(round(height * downscale_factor)))
+
+    return (scaled_width, scaled_height)
+
+
+def _rescale_box_to_original_frame(box, downscale_factor):
+    """
+    Convert a box detected on a downscaled frame back to original-frame
+    coordinates.
+    """
+
+    if downscale_factor == 1.0:
+        return box
+
+    x, y, w, h = box
+
+    original_x = int(round(x / downscale_factor))
+    original_y = int(round(y / downscale_factor))
+    original_w = int(round(w / downscale_factor))
+    original_h = int(round(h / downscale_factor))
+
+    return (original_x, original_y, original_w, original_h)
+
+
 def _detect_eyes_in_face_roi(face_roi, face_coords, face_box, cascades):
     """
     Detect eye candidates inside the upper part of the face ROI.
@@ -384,54 +443,87 @@ def merge_face_boxes(face_boxes, iou_threshold=FACE_MERGE_IOU_THRESHOLD):
     return _merge_boxes(face_boxes, iou_threshold)
 
 
-def detect_faces(gray_frame, cascades):
+def detect_faces(gray_frame, cascades, downscale_factor=1.0):
     """
-    Detect faces in one grayscale frame using:
-    - frontal face cascade
-    - profile face cascade on original frame
-    - profile face cascade on horizontally flipped frame
+    Detect faces in one grayscale frame.
 
-    Returned result is already merged/filtered.
+    Current strategy:
+    - optionally create a downscaled grayscale frame for face detection
+    - run frontal face cascade first
+    - if frontal detection finds at least one face, return those results
+    - only if frontal detection fails, run profile detection
+      on original downscaled frame and flipped downscaled frame
+    - rescale detected boxes back to original-frame coordinates
+
+    Returned result is already merged/filtered and always uses original-frame
+    coordinates.
     """
+
+    detection_gray, used_downscale_factor = _prepare_downscaled_gray_frame(
+        gray_frame,
+        downscale_factor
+    )
+
+    detection_min_size = _scale_size_for_downscaled_frame(
+        FACE_MIN_SIZE,
+        used_downscale_factor
+    )
 
     frontal_cascade = cascades["face_frontal"]
     profile_cascade = cascades["face_profile"]
 
     frontal_faces = frontal_cascade.detectMultiScale(
-        gray_frame,
+        detection_gray,
         scaleFactor=FACE_SCALE_FACTOR,
         minNeighbors=FACE_MIN_NEIGHBORS,
-        minSize=FACE_MIN_SIZE
+        minSize=detection_min_size
     )
+
+    frontal_boxes = [
+        _rescale_box_to_original_frame(box, used_downscale_factor)
+        for box in _to_box_list(frontal_faces)
+    ]
+
+    if frontal_boxes:
+        return merge_face_boxes(frontal_boxes)
 
     profile_faces_left = profile_cascade.detectMultiScale(
-        gray_frame,
+        detection_gray,
         scaleFactor=FACE_SCALE_FACTOR,
         minNeighbors=FACE_MIN_NEIGHBORS,
-        minSize=FACE_MIN_SIZE
+        minSize=detection_min_size
     )
 
-    flipped_gray = cv2.flip(gray_frame, 1)
+    flipped_gray = cv2.flip(detection_gray, 1)
     profile_faces_right_flipped = profile_cascade.detectMultiScale(
         flipped_gray,
         scaleFactor=FACE_SCALE_FACTOR,
         minNeighbors=FACE_MIN_NEIGHBORS,
-        minSize=FACE_MIN_SIZE
+        minSize=detection_min_size
     )
 
-    frontal_boxes = _to_box_list(frontal_faces)
     profile_boxes_left = _to_box_list(profile_faces_left)
 
-    frame_width = gray_frame.shape[1]
+    detection_frame_width = detection_gray.shape[1]
     profile_boxes_right = [
-        _unflip_box_horizontally(box, frame_width)
+        _unflip_box_horizontally(box, detection_frame_width)
         for box in _to_box_list(profile_faces_right_flipped)
     ]
 
-    all_face_boxes = frontal_boxes + profile_boxes_left + profile_boxes_right
-    merged_face_boxes = merge_face_boxes(all_face_boxes)
+    profile_boxes_left = [
+        _rescale_box_to_original_frame(box, used_downscale_factor)
+        for box in profile_boxes_left
+    ]
 
-    return merged_face_boxes
+    profile_boxes_right = [
+        _rescale_box_to_original_frame(box, used_downscale_factor)
+        for box in profile_boxes_right
+    ]
+
+    all_profile_boxes = profile_boxes_left + profile_boxes_right
+    merged_profile_boxes = merge_face_boxes(all_profile_boxes)
+
+    return merged_profile_boxes
 
 
 def select_main_face(face_boxes, previous_face=None):
@@ -472,14 +564,14 @@ def select_main_face(face_boxes, previous_face=None):
     return largest_face
 
 
-def detect_face_parts(gray_frame, face_box, cascades):
+def detect_face_parts(gray_frame, face_box, cascades, enable_mouth_detection=True):
     """
     Detect face parts inside the selected face ROI.
 
     Current behavior:
     - if no face is selected, return empty result
-    - detect eyes in the upper face region
-    - detect mouth/smile in the lower face region
+    - always detect eyes in the upper face region
+    - detect mouth/smile in the lower face region only if enabled
 
     Returned boxes are in full-frame coordinates.
     """
@@ -493,7 +585,11 @@ def detect_face_parts(gray_frame, face_box, cascades):
         }
 
     eyes = _detect_eyes_in_face_roi(face_roi, face_coords, face_box, cascades)
-    mouth = _detect_mouth_in_face_roi(face_roi, face_coords, face_box, cascades)
+
+    if enable_mouth_detection:
+        mouth = _detect_mouth_in_face_roi(face_roi, face_coords, face_box, cascades)
+    else:
+        mouth = []
 
     return {
         "eyes": eyes,

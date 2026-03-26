@@ -13,7 +13,8 @@ Current stage:
 - face-box merging/filtering
 - main-face selection
 - eye detection inside face ROI
-- mouth/smile detection inside lower face ROI
+- optional mouth/smile detection inside lower face ROI
+- face detection on an optional downscaled grayscale frame
 - eye-state classification connected
 - evaluation connected
 - temporary visual inspection of detected face / eye / mouth boxes
@@ -40,13 +41,21 @@ from evaluation import (
 
 
 # ---------------------------------------------------------------------
+# Runtime settings
+# ---------------------------------------------------------------------
+
+ENABLE_MOUTH_DETECTION = False
+FACE_DETECTION_DOWNSCALE_FACTOR = 0.75
+
+
+# ---------------------------------------------------------------------
 # Temporary debug settings
 # ---------------------------------------------------------------------
 
-TEMP_SHOW_FACE_BOXES = False
-TEMP_SHOW_EYE_BOXES = False
+TEMP_SHOW_FACE_BOXES = True
+TEMP_SHOW_EYE_BOXES = True
 TEMP_SHOW_MOUTH_BOXES = False
-TEMP_SHOW_EYE_STATE_TEXT = False
+TEMP_SHOW_EYE_STATE_TEXT = True
 TEMP_PREVIEW_EVERY_N_FRAMES = 5
 
 
@@ -169,9 +178,16 @@ def main():
     print(f"Project root: {paths['project_root']}")
     print(f"Video path:   {paths['video_path']}")
     print("Cascades loaded successfully.")
-    print("Frontal + profile face detectors initialized.")
+    print("Frontal face detector initialized.")
+    print("Profile face detector initialized (fallback mode).")
+    print(f"Face detection downscale factor: {FACE_DETECTION_DOWNSCALE_FACTOR}")
     print("Eye detector initialized.")
-    print("Mouth/smile detector initialized.")
+
+    if ENABLE_MOUTH_DETECTION:
+        print("Mouth/smile detector initialized.")
+    else:
+        print("Mouth/smile detector disabled.")
+
     print("Eye-state classifier initialized.")
     print("Evaluation module initialized.")
     print()
@@ -210,9 +226,20 @@ def main():
             # Localization timing: detection + face-part localization
             localization_start = perf_counter()
 
-            face_boxes = detect_faces(gray_frame, cascades)
+            face_boxes = detect_faces(
+                gray_frame,
+                cascades,
+                downscale_factor=FACE_DETECTION_DOWNSCALE_FACTOR
+            )
+
             main_face = select_main_face(face_boxes, previous_face)
-            face_parts = detect_face_parts(gray_frame, main_face, cascades)
+
+            face_parts = detect_face_parts(
+                gray_frame,
+                main_face,
+                cascades,
+                enable_mouth_detection=ENABLE_MOUTH_DETECTION
+            )
 
             localization_end = perf_counter()
             localization_time_ms = (localization_end - localization_start) * 1000.0
@@ -262,7 +289,7 @@ def main():
                     for (x, y, w, h) in face_parts["eyes"]:
                         cv2.rectangle(debug_frame, (x, y), (x + w, y + h), (255, 0, 0), 2)
 
-                if TEMP_SHOW_MOUTH_BOXES:
+                if TEMP_SHOW_MOUTH_BOXES and ENABLE_MOUTH_DETECTION:
                     for (x, y, w, h) in face_parts["mouth"]:
                         cv2.rectangle(debug_frame, (x, y), (x + w, y + h), (0, 255, 255), 2)
 
