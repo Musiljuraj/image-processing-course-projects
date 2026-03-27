@@ -1,20 +1,17 @@
 """
 detectors.py
 
-Current stage:
-- detector module created
-- real cascade loading implemented
-- multi-cascade face detection implemented
-- face-box merging/filtering implemented
-- main-face selection implemented
-- eye detection inside face ROI implemented
-- mouth/smile detection inside lower face ROI implemented
-- combined face-parts detection implemented
+This module contains all image-localization routines used by the project.
 
-Current speed-oriented changes:
-- profile cascades run only if frontal detection fails
-- mouth detection can be switched on/off from main.py
-- face detection can run on a downscaled grayscale frame
+Its responsibilities are:
+- loading Haar cascade classifiers from XML files,
+- detecting faces in a grayscale frame,
+- selecting one main face for subsequent processing,
+- detecting eyes and mouth inside the selected face region.
+
+The module separates low-level geometric helper functions from the public
+detector interface so that the main program can stay simple and focused on
+pipeline control.
 """
 
 import math
@@ -22,7 +19,14 @@ import cv2
 
 
 # ---------------------------------------------------------------------
-# Basic detector parameters
+# Detector parameter configuration
+# ---------------------------------------------------------------------
+#
+# These constants define the operating behavior of the cascade detectors
+# and the simple geometric filtering logic used after detection.
+#
+# The values are intentionally kept in one place so that tuning can be
+# performed without modifying the body of the individual functions.
 # ---------------------------------------------------------------------
 
 FACE_SCALE_FACTOR = 1.15
@@ -66,11 +70,17 @@ MAX_MOUTH_COUNT = 1
 
 
 # ---------------------------------------------------------------------
-# Internal helper functions
+# Internal cascade-loading helpers
 # ---------------------------------------------------------------------
 
 def _load_single_cascade(cascade_path):
-    """Load one Haar cascade XML file."""
+    """
+    Load one Haar cascade classifier from an XML file.
+
+    The function converts the provided path to string form so it can be used
+    directly by OpenCV. A load failure is treated as a hard error because the
+    detector pipeline cannot operate correctly without the cascade file.
+    """
 
     cascade = cv2.CascadeClassifier(str(cascade_path))
 
@@ -80,27 +90,54 @@ def _load_single_cascade(cascade_path):
     return cascade
 
 
+# ---------------------------------------------------------------------
+# Internal box-conversion and geometry helpers
+# ---------------------------------------------------------------------
+
 def _to_box_list(detected_boxes):
-    """Convert OpenCV detection output to a plain Python list of tuples."""
+    """
+    Convert OpenCV detection output into a regular Python list of tuples.
+
+    OpenCV returns an array-like structure of rectangles. The project uses
+    a uniform internal representation of bounding boxes:
+        (x, y, w, h)
+
+    Converting immediately to tuples keeps subsequent code simple and explicit.
+    """
 
     return [tuple(map(int, box)) for box in detected_boxes]
 
 
 def _box_area(box):
-    """Return area of one (x, y, w, h) box."""
+    """
+    Compute the area of one bounding box.
+
+    The box is assumed to use the standard project format:
+        (x, y, w, h)
+    """
 
     return box[2] * box[3]
 
 
 def _box_center(box):
-    """Return center point of one (x, y, w, h) box."""
+    """
+    Compute the center point of one bounding box.
+
+    The returned center is represented as a floating-point pair:
+        (center_x, center_y)
+    """
 
     x, y, w, h = box
     return (x + w / 2.0, y + h / 2.0)
 
 
 def _center_distance(box_a, box_b):
-    """Return Euclidean distance between centers of two boxes."""
+    """
+    Compute Euclidean distance between the centers of two boxes.
+
+    This measure is used in the main-face selection logic as one of the
+    continuity cues between the previous frame and the current frame.
+    """
 
     ax, ay = _box_center(box_a)
     bx, by = _box_center(box_b)
@@ -110,10 +147,11 @@ def _center_distance(box_a, box_b):
 
 def _compute_iou(box_a, box_b):
     """
-    Compute Intersection over Union for two boxes.
+    Compute Intersection over Union for two bounding boxes.
 
-    IoU is used here only as a simple overlap measure for filtering
-    and for continuity between frames.
+    IoU is a standard overlap measure. In this project it is used for:
+    - removing strongly overlapping duplicate detections,
+    - preferring stable face detections across adjacent frames.
     """
 
     ax1, ay1, aw, ah = box_a
@@ -144,8 +182,12 @@ def _compute_iou(box_a, box_b):
 
 def _unflip_box_horizontally(box, frame_width):
     """
-    Convert a box detected on a horizontally flipped frame back to the
-    original frame coordinates.
+    Convert a box detected on a horizontally flipped image back into the
+    coordinate system of the original image.
+
+    This is used for right-profile face detection. The profile cascade is run
+    once on the original frame and once on a flipped frame so that both left
+    and right profiles can be handled using one profile classifier.
     """
 
     x, y, w, h = box
@@ -154,13 +196,21 @@ def _unflip_box_horizontally(box, frame_width):
     return (original_x, y, w, h)
 
 
+# ---------------------------------------------------------------------
+# Internal filtering and candidate-selection helpers
+# ---------------------------------------------------------------------
+
 def _merge_boxes(boxes, iou_threshold):
     """
-    Merge/filter overlapping boxes.
+    Filter overlapping boxes using a simple size-priority strategy.
 
-    Simple strategy:
-    - sort boxes by area from largest to smallest
-    - keep a box only if it does not strongly overlap with a box already kept
+    The procedure is:
+    - sort candidate boxes from largest to smallest,
+    - keep a box only if it does not overlap too strongly with a box that
+      has already been accepted.
+
+    This is not a full clustering algorithm. It is a lightweight post-processing
+    step that is sufficient for a small school assignment.
     """
 
     if not boxes:
@@ -185,11 +235,14 @@ def _merge_boxes(boxes, iou_threshold):
 
 def _select_best_eye_boxes(eye_boxes, max_eye_count=MAX_EYE_COUNT):
     """
-    Keep only a small number of best eye candidates.
+    Keep only the most relevant eye candidates.
 
-    Current strategy:
-    - keep the largest candidates
-    - then sort them from left to right
+    The current strategy is intentionally simple:
+    - keep the largest candidates,
+    - then sort the retained boxes from left to right.
+
+    This produces a stable and easy-to-use output for later stages of the
+    pipeline, especially for frame-level eye-state classification.
     """
 
     if not eye_boxes:
@@ -203,11 +256,14 @@ def _select_best_eye_boxes(eye_boxes, max_eye_count=MAX_EYE_COUNT):
 
 def _select_best_mouth_boxes(mouth_boxes, max_mouth_count=MAX_MOUTH_COUNT):
     """
-    Keep only a small number of best mouth/smile candidates.
+    Keep only the most relevant mouth or smile candidates.
 
-    Current strategy:
-    - prefer larger boxes
-    - if sizes are similar, prefer lower boxes
+    The current selection favors:
+    - larger detections,
+    - detections lower in the face region if sizes are similar.
+
+    This bias is appropriate because the mouth is expected in the lower part
+    of the face and should generally occupy a visible area.
     """
 
     if not mouth_boxes:
@@ -222,11 +278,20 @@ def _select_best_mouth_boxes(mouth_boxes, max_mouth_count=MAX_MOUTH_COUNT):
     return best_boxes
 
 
+# ---------------------------------------------------------------------
+# Internal region-preparation helpers
+# ---------------------------------------------------------------------
+
 def _extract_face_roi(gray_frame, face_box):
     """
-    Clamp a face box to the frame and return:
-    - face ROI
-    - clamped face coordinates
+    Extract the face region of interest from the grayscale frame.
+
+    The incoming face box is clamped to valid image coordinates so that the
+    function remains safe even if a box lies partially outside the frame.
+
+    The function returns:
+    - the cropped face ROI,
+    - the clamped coordinates in the form (x1, y1, x2, y2).
     """
 
     if face_box is None:
@@ -251,9 +316,12 @@ def _extract_face_roi(gray_frame, face_box):
 
 def _prepare_downscaled_gray_frame(gray_frame, downscale_factor):
     """
-    Create a smaller grayscale frame for face detection.
+    Prepare a grayscale frame for optional faster face detection.
 
-    If downscale_factor is 1.0 or higher, the original frame is returned.
+    When the downscale factor is smaller than 1.0, the frame is reduced before
+    face detection is performed. This speeds up the most expensive global
+    localization stage. All detected boxes are later scaled back to original
+    image coordinates.
     """
 
     if downscale_factor >= 1.0:
@@ -275,8 +343,11 @@ def _prepare_downscaled_gray_frame(gray_frame, downscale_factor):
 
 def _scale_size_for_downscaled_frame(size, downscale_factor):
     """
-    Scale a size tuple from original-frame coordinates to downscaled-frame
-    coordinates.
+    Scale a size tuple from original-frame coordinates to coordinates valid
+    on the downscaled frame.
+
+    This is needed so that minimum detector sizes remain consistent when
+    face detection is executed on a reduced image.
     """
 
     width, height = size
@@ -291,6 +362,9 @@ def _rescale_box_to_original_frame(box, downscale_factor):
     """
     Convert a box detected on a downscaled frame back to original-frame
     coordinates.
+
+    This keeps the public detector interface consistent: all returned boxes
+    use the original input-frame coordinate system.
     """
 
     if downscale_factor == 1.0:
@@ -306,11 +380,19 @@ def _rescale_box_to_original_frame(box, downscale_factor):
     return (original_x, original_y, original_w, original_h)
 
 
+# ---------------------------------------------------------------------
+# Internal part-localization helpers
+# ---------------------------------------------------------------------
+
 def _detect_eyes_in_face_roi(face_roi, face_coords, face_box, cascades):
     """
-    Detect eye candidates inside the upper part of the face ROI.
+    Detect eye candidates inside the upper part of the selected face region.
 
-    Returned eye boxes are in full-frame coordinates.
+    The search is intentionally limited to the upper facial area and to
+    a narrower horizontal band. This reduces false positives and speeds up
+    the search compared with scanning the whole face ROI.
+
+    Returned eye boxes are converted back into full-frame coordinates.
     """
 
     x1, y1, x2, y2 = face_coords
@@ -363,9 +445,12 @@ def _detect_eyes_in_face_roi(face_roi, face_coords, face_box, cascades):
 
 def _detect_mouth_in_face_roi(face_roi, face_coords, face_box, cascades):
     """
-    Detect mouth/smile candidates inside the lower part of the face ROI.
+    Detect mouth or smile candidates inside the lower part of the selected
+    face region.
 
-    Returned mouth boxes are in full-frame coordinates.
+    The search is limited to the lower facial area because that is where the
+    mouth is expected. The result is returned in full-frame coordinates so it
+    remains compatible with the rest of the project.
     """
 
     x1, y1, x2, y2 = face_coords
@@ -417,12 +502,15 @@ def _detect_mouth_in_face_roi(face_roi, face_coords, face_box, cascades):
 
 
 # ---------------------------------------------------------------------
-# Detector module public interface
+# Public detector interface
 # ---------------------------------------------------------------------
 
 def load_cascades(paths):
     """
-    Load all cascade classifiers needed by the project.
+    Load all cascade classifiers required by the project.
+
+    The returned dictionary uses stable logical names so that the rest of the
+    project never needs to know the exact file names or directory layout.
     """
 
     cascades = {
@@ -437,7 +525,10 @@ def load_cascades(paths):
 
 def merge_face_boxes(face_boxes, iou_threshold=FACE_MERGE_IOU_THRESHOLD):
     """
-    Merge/filter overlapping face boxes.
+    Merge or filter overlapping face boxes.
+
+    This function exists as a public wrapper around the generic internal
+    merging helper so that face-specific code can remain explicit and readable.
     """
 
     return _merge_boxes(face_boxes, iou_threshold)
@@ -447,16 +538,16 @@ def detect_faces(gray_frame, cascades, downscale_factor=1.0):
     """
     Detect faces in one grayscale frame.
 
-    Current strategy:
-    - optionally create a downscaled grayscale frame for face detection
-    - run frontal face cascade first
-    - if frontal detection finds at least one face, return those results
-    - only if frontal detection fails, run profile detection
-      on original downscaled frame and flipped downscaled frame
-    - rescale detected boxes back to original-frame coordinates
+    The current strategy is:
+    - optionally downscale the frame for faster global detection,
+    - run frontal-face detection first,
+    - if frontal detection succeeds, use those results directly,
+    - otherwise try profile detection on both normal and flipped views,
+    - rescale every accepted detection back to original-frame coordinates,
+    - merge strongly overlapping detections.
 
-    Returned result is already merged/filtered and always uses original-frame
-    coordinates.
+    The returned face boxes always use the original input-frame coordinate
+    system, regardless of whether downscaling was used internally.
     """
 
     detection_gray, used_downscale_factor = _prepare_downscaled_gray_frame(
@@ -528,14 +619,17 @@ def detect_faces(gray_frame, cascades, downscale_factor=1.0):
 
 def select_main_face(face_boxes, previous_face=None):
     """
-    Select one main face from detected face boxes.
+    Select one main face from the set of current face detections.
 
-    Current strategy:
-    - if no faces exist, return None
-    - if there is no previous face, choose the largest box
-    - if previous face exists, prefer a box that overlaps with it
-      or stays close to it
-    - if no continuity candidate exists, fall back to the largest box
+    The current selection logic aims at temporal stability:
+    - if there is no previous face, the largest current face is used,
+    - if there is a previous face, boxes that overlap with it or remain close
+      to it are preferred,
+    - if no continuity candidate exists, the function falls back to the
+      largest current detection.
+
+    This design keeps the downstream eye and mouth localization focused on
+    one stable target face.
     """
 
     if not face_boxes:
@@ -566,14 +660,14 @@ def select_main_face(face_boxes, previous_face=None):
 
 def detect_face_parts(gray_frame, face_box, cascades, enable_mouth_detection=True):
     """
-    Detect face parts inside the selected face ROI.
+    Detect relevant facial parts inside the selected face region.
 
-    Current behavior:
-    - if no face is selected, return empty result
-    - always detect eyes in the upper face region
-    - detect mouth/smile in the lower face region only if enabled
+    The returned dictionary always contains the same keys so that the rest of
+    the project can work with a stable interface:
+    - "eyes"
+    - "mouth"
 
-    Returned boxes are in full-frame coordinates.
+    If no face is available, both lists are empty.
     """
 
     face_roi, face_coords = _extract_face_roi(gray_frame, face_box)

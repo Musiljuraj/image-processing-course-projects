@@ -1,30 +1,38 @@
 """
 evaluation.py
 
-Stage 6:
-- ground-truth loading
-- prediction extraction
-- frame-by-frame evaluation
-- accuracy computation
-- simple timing statistics
+This module contains the complete evaluation pipeline used after video
+processing is finished.
+
+Its responsibilities are:
+- reading ground-truth labels from a text file,
+- extracting predicted labels from stored frame results,
+- aligning both label sequences,
+- computing accuracy and simple confusion-style counts,
+- computing localization timing statistics,
+- formatting and saving the final evaluation summary.
 """
 
 from statistics import mean
 
 
 # ---------------------------------------------------------------------
-# Label handling
+# Label normalization
 # ---------------------------------------------------------------------
 
 def normalize_eye_state_label(label):
     """
-    Normalize different textual forms of the same eye-state label.
+    Normalize textual eye-state labels into the internal evaluation format.
 
-    Internal evaluation labels:
+    The evaluation stage operates with two canonical label names:
     - "open"
     - "close"
 
-    Unknown values are returned unchanged so they can still be counted.
+    Several textual variants are accepted so that the evaluation remains
+    tolerant to minor naming differences in predictions or reference data.
+
+    Any unrecognized label is returned unchanged so it can still be counted
+    explicitly in the "other" category.
     """
 
     if label is None:
@@ -42,16 +50,20 @@ def normalize_eye_state_label(label):
 
 
 # ---------------------------------------------------------------------
-# Ground-truth and prediction loading
+# Input loading and extraction
 # ---------------------------------------------------------------------
 
 def load_ground_truth(ground_truth_path):
     """
     Load ground-truth eye-state labels from a text file.
 
-    Expected simple format:
-    - one label per line
-    - empty lines are ignored
+    Expected file structure:
+    - one label per line,
+    - empty lines ignored,
+    - labels normalized into the internal evaluation vocabulary.
+
+    The function returns a list of normalized labels in the same order as
+    they appear in the file.
     """
 
     ground_truth_labels = []
@@ -70,7 +82,13 @@ def load_ground_truth(ground_truth_path):
 
 def extract_predicted_labels(frame_results):
     """
-    Extract predicted eye-state labels from stored frame results.
+    Extract predicted eye-state labels from the frame-result list.
+
+    Each frame result is expected to contain the key:
+        "eye_state"
+
+    The values are normalized before being returned so that prediction labels
+    and ground-truth labels follow the same naming convention.
     """
 
     predicted_labels = []
@@ -85,9 +103,10 @@ def extract_predicted_labels(frame_results):
 
 def extract_localization_times(frame_results):
     """
-    Extract localization times from stored frame results.
+    Extract measured localization times from the stored frame results.
 
-    Missing values are ignored.
+    Missing timing values are ignored. The resulting list contains floating-
+    point timing values in milliseconds.
     """
 
     localization_times = []
@@ -107,11 +126,16 @@ def extract_localization_times(frame_results):
 
 def align_label_sequences(predicted_labels, ground_truth_labels):
     """
-    Align predicted and ground-truth sequences by truncating both
-    to the shorter length.
+    Align predicted and reference label sequences by truncating them to the
+    same length.
 
-    This keeps the evaluation simple and robust even if the run is stopped
-    early or if lengths differ for another reason.
+    This simple alignment strategy is sufficient for the current assignment.
+    It ensures evaluation can still be performed when:
+    - the processing run is interrupted early,
+    - the prediction sequence is shorter than the reference sequence,
+    - the input data contains a minor length mismatch.
+
+    The function returns both original sequence lengths and the aligned data.
     """
 
     aligned_count = min(len(predicted_labels), len(ground_truth_labels))
@@ -129,15 +153,22 @@ def align_label_sequences(predicted_labels, ground_truth_labels):
 
 
 # ---------------------------------------------------------------------
-# Accuracy and confusion-style counting
+# Accuracy and confusion-style statistics
 # ---------------------------------------------------------------------
 
 def compute_confusion_counts(predicted_labels, ground_truth_labels):
     """
-    Compute simple binary eye-state counts.
+    Compute confusion-style counts for the binary open/close task.
 
-    Count names use the form:
-    actual_as_predicted
+    The count names follow the pattern:
+        actual_as_predicted
+
+    Example:
+        "open_as_close" means that the ground truth was "open"
+        but the prediction was "close".
+
+    Any label pair outside the expected binary scheme is accumulated into
+    the "other" category.
     """
 
     counts = {
@@ -165,7 +196,13 @@ def compute_confusion_counts(predicted_labels, ground_truth_labels):
 
 def compute_accuracy(predicted_labels, ground_truth_labels):
     """
-    Compute simple frame-level accuracy.
+    Compute simple frame-level classification accuracy.
+
+    Accuracy is defined as:
+        correct_predictions / compared_predictions
+
+    The function returns the number of correct matches, the number of
+    compared labels, and the accuracy percentage.
     """
 
     compared_count = min(len(predicted_labels), len(ground_truth_labels))
@@ -198,7 +235,13 @@ def compute_accuracy(predicted_labels, ground_truth_labels):
 
 def compute_timing_stats(localization_times_ms):
     """
-    Compute simple localization-time statistics in milliseconds.
+    Compute basic descriptive statistics for localization times.
+
+    The returned values are expressed in milliseconds and include:
+    - number of measured frames,
+    - arithmetic mean,
+    - minimum,
+    - maximum.
     """
 
     if not localization_times_ms:
@@ -218,12 +261,21 @@ def compute_timing_stats(localization_times_ms):
 
 
 # ---------------------------------------------------------------------
-# Full evaluation wrapper
+# Complete evaluation pipeline
 # ---------------------------------------------------------------------
 
 def evaluate_results(frame_results, ground_truth_path):
     """
-    Run the full evaluation pipeline and return one summary dictionary.
+    Run the complete evaluation procedure and return a single summary object.
+
+    The summary dictionary contains:
+    - original sequence lengths,
+    - aligned comparison length,
+    - accuracy information,
+    - confusion-style counts,
+    - timing statistics.
+
+    This function is the main evaluation entry point used by the main program.
     """
 
     ground_truth_labels = load_ground_truth(ground_truth_path)
@@ -251,35 +303,71 @@ def evaluate_results(frame_results, ground_truth_path):
     return summary
 
 
-def print_evaluation_summary(summary):
+# ---------------------------------------------------------------------
+# Summary formatting and output
+# ---------------------------------------------------------------------
+
+def format_evaluation_summary(summary):
     """
-    Print the most important evaluation results in a readable way.
+    Convert the evaluation summary into a readable multiline text block.
+
+    This text representation is used both for console output and for saving
+    the final report file.
     """
 
     accuracy = summary["accuracy"]
     confusion = summary["confusion"]
     timing = summary["timing"]
 
-    print("=== Evaluation summary ===")
-    print(f"Predicted labels:      {summary['predicted_count']}")
-    print(f"Ground-truth labels:   {summary['ground_truth_count']}")
-    print(f"Compared labels:       {summary['aligned_count']}")
-    print()
+    lines = [
+        "=== Evaluation summary ===",
+        f"Predicted labels:      {summary['predicted_count']}",
+        f"Ground-truth labels:   {summary['ground_truth_count']}",
+        f"Compared labels:       {summary['aligned_count']}",
+        "",
+        f"Correct predictions:   {accuracy['correct_count']}",
+        f"Accuracy [%]:          {accuracy['accuracy_percent']:.2f}",
+        "",
+        "Confusion-style counts:",
+        f"  open  -> open:       {confusion['open_as_open']}",
+        f"  open  -> close:      {confusion['open_as_close']}",
+        f"  close -> open:       {confusion['close_as_open']}",
+        f"  close -> close:      {confusion['close_as_close']}",
+        f"  other:               {confusion['other']}",
+        "",
+        "Localization timing [ms]:",
+        f"  measured frames:     {timing['count']}",
+        f"  mean:                {timing['mean_ms']:.3f}",
+        f"  min:                 {timing['min_ms']:.3f}",
+        f"  max:                 {timing['max_ms']:.3f}",
+    ]
 
-    print(f"Correct predictions:   {accuracy['correct_count']}")
-    print(f"Accuracy [%]:          {accuracy['accuracy_percent']:.2f}")
-    print()
+    return "\n".join(lines)
 
-    print("Confusion-style counts:")
-    print(f"  open  -> open:       {confusion['open_as_open']}")
-    print(f"  open  -> close:      {confusion['open_as_close']}")
-    print(f"  close -> open:       {confusion['close_as_open']}")
-    print(f"  close -> close:      {confusion['close_as_close']}")
-    print(f"  other:               {confusion['other']}")
-    print()
 
-    print("Localization timing [ms]:")
-    print(f"  measured frames:     {timing['count']}")
-    print(f"  mean:                {timing['mean_ms']:.3f}")
-    print(f"  min:                 {timing['min_ms']:.3f}")
-    print(f"  max:                 {timing['max_ms']:.3f}")
+def print_evaluation_summary(summary):
+    """
+    Print the formatted evaluation summary to standard output.
+
+    This function is a convenience wrapper around the formatter so that
+    presentation logic stays centralized.
+    """
+
+    print(format_evaluation_summary(summary))
+
+
+def save_evaluation_report(summary, report_path, extra_lines=None):
+    """
+    Save the formatted evaluation summary to a text report.
+
+    Optional extra lines can be placed before the main summary block. This is
+    useful for run configuration details such as file paths or runtime options.
+    """
+
+    report_text = format_evaluation_summary(summary)
+
+    if extra_lines:
+        report_text = "\n".join(extra_lines) + "\n\n" + report_text
+
+    with open(report_path, "w", encoding="utf-8") as file:
+        file.write(report_text + "\n")
