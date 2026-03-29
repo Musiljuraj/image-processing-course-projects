@@ -19,6 +19,13 @@ This module currently provides:
 - parse_ground_truth_labels(...)
 - load_ground_truth_labels(...)
 """
+# ---------------------------------------------------------------------------
+# Module orientation:
+# This module owns file parsing for the parking test dataset. It loads the
+# parking-space map, test images, and ground-truth label files. The rest of the
+# pipeline relies on these parsed structures rather than raw text files, which
+# keeps image processing and evaluation code focused on their own responsibilities.
+# ---------------------------------------------------------------------------
 
 from pathlib import Path
 import re
@@ -87,6 +94,8 @@ def parse_parking_line(line, line_no):
     #  [x4, y4]]
     points = np.array(values, dtype="float32").reshape(4, 2)
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return points
 
 
@@ -110,8 +119,12 @@ def load_parking_map(map_path):
     should match.
     """
 
+    # Set up the local working state first so the later processing steps can operate on
+    # explicit, well-named intermediate values.
     parking_map = []
 
+    # Open the required file resource only for the duration of the read/write block so
+    # resource handling stays local and explicit.
     with open(map_path, "r", encoding="utf-8") as f:
         for line_no, line in enumerate(f, start=1):
             points = parse_parking_line(line, line_no)
@@ -121,6 +134,8 @@ def load_parking_map(map_path):
 
             parking_map.append(points)
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return parking_map
 
 
@@ -145,11 +160,15 @@ def image_number_key(path):
         otherwise fallback to raw filename
     """
 
+    # Set up the local working state first so the later processing steps can operate on
+    # explicit, well-named intermediate values.
     match = re.search(r"test(\d+)\.jpg$", path.name)
 
     if match:
         return int(match.group(1))
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return path.name
 
 
@@ -183,6 +202,8 @@ def load_test_images(images_dir):
 
     test_cases = []
 
+    # Process the collection item by item, updating the running result structure as each
+    # sample contributes its part of the final output.
     for image_path in image_paths:
         image = cv2.imread(str(image_path))
 
@@ -208,6 +229,8 @@ def load_test_images(images_dir):
             }
         )
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return test_cases
 
 
@@ -242,18 +265,26 @@ def parse_ground_truth_labels(text, txt_path="<unknown>"):
     easier to test and easier to reuse if needed.
     """
 
+    # Reject unsupported inputs immediately so the main body of the function can assume
+    # the expected data structure and fail with clear errors when needed.
     if not isinstance(text, str):
         raise TypeError("Ground-truth file content must be a string.")
 
     # normalize commas to spaces just in case the file uses them as separators
     normalized_text = text.replace(",", " ").strip()
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if not normalized_text:
         raise ValueError(f"Ground-truth file is empty: {txt_path}")
 
     tokens = normalized_text.split()
 
+    # Start an accumulation structure that will be filled gradually as the function
+    # walks through samples, records, rows, or files.
     labels = []
+    # Process the collection item by item, updating the running result structure as each
+    # sample contributes its part of the final output.
     for token in tokens:
         try:
             labels.append(int(token))
@@ -262,6 +293,8 @@ def parse_ground_truth_labels(text, txt_path="<unknown>"):
                 f"Ground-truth file contains a non-integer token '{token}': {txt_path}"
             ) from exc
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return labels
 
 
@@ -281,14 +314,22 @@ def load_ground_truth_labels(txt_path):
     the correct place to add ground-truth parsing.
     """
 
+    # Convert incoming path-like inputs to Path objects at the start so all later
+    # filesystem work uses one consistent path representation.
     txt_path = Path(txt_path)
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if not txt_path.exists():
         raise FileNotFoundError(f"Ground-truth file not found: {txt_path}")
 
+    # Open the required file resource only for the duration of the read/write block so
+    # resource handling stays local and explicit.
     with open(txt_path, "r", encoding="utf-8") as f:
         text = f.read()
 
     labels = parse_ground_truth_labels(text, txt_path=txt_path)
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return labels

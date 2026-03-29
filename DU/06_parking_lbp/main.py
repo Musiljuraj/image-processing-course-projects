@@ -1,3 +1,11 @@
+# ---------------------------------------------------------------------------
+# Module orientation:
+# This is the top-level runner for the parking LBP experiment. Its job is to
+# define the experiment grid, point the pipeline to the correct dataset paths,
+# launch the full experiment search, save ranked outputs, and print a readable
+# summary of the best result. All detailed work is delegated to other modules;
+# this file mainly defines what should be tried and where the outputs should go.
+# ---------------------------------------------------------------------------
 from pathlib import Path
 
 from experiment_search import run_experiment_search
@@ -9,6 +17,8 @@ def print_best_result(best_result):
     Print a readable summary of the best-ranked experiment result.
     """
 
+    # Read configuration values and normalize them up front so the rest of the function
+    # can rely on one stable internal convention.
     confusion_counts = best_result.get("confusion_counts", {})
 
     print("\n=== BEST RESULT ===")
@@ -53,6 +63,8 @@ def main():
     5. print the best-ranked result
     """
 
+    # Convert incoming path-like inputs to Path objects at the start so all later
+    # filesystem work uses one consistent path representation.
     project_root = Path(__file__).resolve().parent
 
     # -------------------------------------------------------------------------
@@ -164,6 +176,8 @@ def main():
     experiment_results = search_result["experiment_results"]
     ranked_results = search_result["ranked_results"]
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if not ranked_results:
         raise ValueError("No ranked results were produced by experiment search.")
 

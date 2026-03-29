@@ -20,6 +20,16 @@ This module currently provides:
 - save_overlay_image(...)
 - save_processed_patches(...)
 """
+# ---------------------------------------------------------------------------
+# Module orientation:
+# This module sits beside the main pipeline and exists only for inspection and
+# debugging outputs. It does not change predictions or evaluation results.
+# Instead, it turns internal data structures such as parking-space polygons,
+# ROI records, and processed image patches into files that can be looked at by
+# a human. Throughout the project, the same record terminology is preserved:
+# raw extraction produces ROI records, preprocessing extends them, and later
+# stages may save one chosen image representation from those records.
+# ---------------------------------------------------------------------------
 
 from pathlib import Path
 
@@ -46,8 +56,12 @@ def draw_parking_map(image, parking_map):
     - relationship between the full scene and later ROI patches
     """
 
+    # Set up the local working state first so the later processing steps can operate on
+    # explicit, well-named intermediate values.
     vis = image.copy()
 
+    # Process items in a deterministic order so the produced outputs stay aligned with
+    # the corresponding inputs, labels, or metadata.
     for i, pts in enumerate(parking_map, start=1):
         pts_int = pts.astype("int32")
 
@@ -74,6 +88,8 @@ def draw_parking_map(image, parking_map):
             cv2.LINE_AA,
         )
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return vis
 
 
@@ -91,10 +107,14 @@ def save_overlay_image(image, output_path):
     - raises a clear error if saving fails
     """
 
+    # Convert incoming path-like inputs to Path objects at the start so all later
+    # filesystem work uses one consistent path representation.
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     ok = cv2.imwrite(str(output_path), image)
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if not ok:
         raise IOError(f"Could not save debug overlay image: {output_path}")
 
@@ -145,6 +165,8 @@ def save_processed_patches(records, output_dir, image_key):
         save_processed_patches(preprocessed_rois, out_dir, "processed_image")
     """
 
+    # Convert incoming path-like inputs to Path objects at the start so all later
+    # filesystem work uses one consistent path representation.
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -158,8 +180,12 @@ def save_processed_patches(records, output_dir, image_key):
     # 120 spaces -> 3 digits
     digits = max(2, len(str(len(records))))
 
+    # Start an accumulation structure that will be filled gradually as the function
+    # walks through samples, records, rows, or files.
     saved_paths = []
 
+    # Process the collection item by item, updating the running result structure as each
+    # sample contributes its part of the final output.
     for record in records:
         if "space_index" not in record:
             raise KeyError(
@@ -190,4 +216,6 @@ def save_processed_patches(records, output_dir, image_key):
 
         saved_paths.append(output_path)
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return saved_paths

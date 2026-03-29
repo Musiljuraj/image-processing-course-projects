@@ -184,6 +184,13 @@ def _bilinear_sample_gray_image(gray_image, sample_y, sample_x):
     Circular LBP neighborhoods usually do not land exactly on integer pixel
     coordinates, especially for larger radii. Bilinear interpolation therefore
     gives a smoother and more faithful estimate of neighbor values.
+
+    Important border-handling note:
+    After clipping sample coordinates to the image boundary, interpolation
+    weights must still sum to 1 even when the sample lies on the last row or
+    last column. The implementation below computes the fractional offsets
+    directly from the clipped coordinates, which keeps border samples stable
+    and prevents them from collapsing to zero.
     """
 
     image_float = gray_image.astype(np.float32, copy=False)
@@ -199,10 +206,13 @@ def _bilinear_sample_gray_image(gray_image, sample_y, sample_x):
     y1 = np.clip(y0 + 1, 0, height - 1)
     x1 = np.clip(x0 + 1, 0, width - 1)
 
-    wa = (y1 - clipped_y) * (x1 - clipped_x)
-    wb = (y1 - clipped_y) * (clipped_x - x0)
-    wc = (clipped_y - y0) * (x1 - clipped_x)
-    wd = (clipped_y - y0) * (clipped_x - x0)
+    dy = clipped_y - y0
+    dx = clipped_x - x0
+
+    wa = (1.0 - dy) * (1.0 - dx)
+    wb = (1.0 - dy) * dx
+    wc = dy * (1.0 - dx)
+    wd = dy * dx
 
     Ia = image_float[y0, x0]
     Ib = image_float[y0, x1]

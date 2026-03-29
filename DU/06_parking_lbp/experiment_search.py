@@ -27,6 +27,15 @@ This module currently provides:
 - run_one_experiment(...)
 - run_experiment_search(...)
 """
+# ---------------------------------------------------------------------------
+# Module orientation:
+# This module is the experiment orchestration layer of the parking LBP pipeline.
+# It does not implement feature extraction or classification itself. Instead, it
+# combines configurations, loads shared inputs once, runs complete end-to-end
+# experiments for each configuration, measures processing times, aggregates
+# evaluation results across the test dataset, and returns standardized
+# experiment-result dictionaries that can later be ranked and saved.
+# ---------------------------------------------------------------------------
 
 from itertools import product
 from pathlib import Path
@@ -72,12 +81,18 @@ def ensure_config_list(configs, config_name):
     clearer.
     """
 
+    # Reject unsupported inputs immediately so the main body of the function can assume
+    # the expected data structure and fail with clear errors when needed.
     if not isinstance(configs, list):
         raise TypeError(f"{config_name} must be a list.")
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if not configs:
         raise ValueError(f"{config_name} must not be empty.")
 
+    # Process items in a deterministic order so the produced outputs stay aligned with
+    # the corresponding inputs, labels, or metadata.
     for index, config in enumerate(configs, start=1):
         if not isinstance(config, dict):
             raise TypeError(
@@ -85,6 +100,8 @@ def ensure_config_list(configs, config_name):
                 f"Item #{index} has type: {type(config).__name__}"
             )
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return configs
 
 
@@ -114,7 +131,7 @@ def build_experiment_configurations(
     Why this function exists:
     The assignment requires experimenting with multiple LBP configurations and
     reporting accuracy and processing time. This helper creates the set of
-    concrete experiment combinations that will later be run end-to-end. :contentReference[oaicite:0]{index=0}
+    concrete experiment combinations that will later be run end-to-end.
     """
 
     preprocessing_configurations = ensure_config_list(
@@ -130,17 +147,24 @@ def build_experiment_configurations(
         "classifier_configurations",
     )
 
+    # Reject unsupported inputs immediately so the main body of the function can assume
+    # the expected data structure and fail with clear errors when needed.
     if evaluation_config is None:
         evaluation_config = {
             "occupied_label": 1,
             "empty_label": 0,
         }
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if not isinstance(evaluation_config, dict):
         raise TypeError("evaluation_config must be a dictionary or None.")
 
     experiment_configurations = []
 
+    # The Cartesian product below explicitly constructs every experiment candidate:
+    # every preprocessing setup is paired with every LBP setup and every classifier
+    # setup, so the later search step can evaluate the entire requested grid.
     for experiment_index, (
         preprocessing_config,
         lbp_config,
@@ -162,6 +186,8 @@ def build_experiment_configurations(
         }
         experiment_configurations.append(experiment_configuration)
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return experiment_configurations
 
 
@@ -206,6 +232,8 @@ def run_one_experiment(
     4. aggregate confusion counts and timing
     """
 
+    # Validate the main external inputs first so the whole experiment either runs on a
+    # consistent dataset or fails immediately with a clear message.
     if not isinstance(training_records, list):
         raise TypeError("training_records must be a list.")
 
@@ -241,6 +269,9 @@ def run_one_experiment(
     # -------------------------------------------------------------------------
     # 1. training feature preparation
     # -------------------------------------------------------------------------
+    # This phase transforms the raw training image records into LBP feature vectors.
+    # The produced X_train / y_train pair is the reusable classifier input that will
+    # be fitted once and then applied to all test images in this experiment.
     training_feature_prep_start = time.perf_counter()
 
     training_feature_records = prepare_training_feature_records(
@@ -258,6 +289,9 @@ def run_one_experiment(
     # -------------------------------------------------------------------------
     # 2. model training
     # -------------------------------------------------------------------------
+    # The classifier is trained once per experiment configuration. This makes the
+    # later per-image testing stage reflect a realistic "train once, predict many"
+    # workflow rather than retraining separately for each test image.
     training_start = time.perf_counter()
 
     model = train_classifier(
@@ -271,6 +305,9 @@ def run_one_experiment(
     # -------------------------------------------------------------------------
     # 3. evaluate across all test images
     # -------------------------------------------------------------------------
+    # Dataset-level aggregation starts here. Each individual test image is processed
+    # in parking-map order, evaluated against its own ground-truth file, and then
+    # merged into the running experiment totals.
     dataset_confusion_counts = initialize_confusion_counts_for_search()
     dataset_num_samples = 0
 
@@ -279,6 +316,9 @@ def run_one_experiment(
 
     per_image_results = []
 
+    # Each test case follows the same end-to-end path:
+    # full scene image -> ROI records -> preprocessed test features -> predictions
+    # -> image-level evaluation -> dataset-level accumulation.
     for test_case in test_cases:
         image_name = test_case["name"]
         image = test_case["image"]
@@ -292,6 +332,9 @@ def run_one_experiment(
         )
 
         # 3b. test feature preparation
+        # This timing block measures how long it takes to turn one test image into
+        # classifier-ready LBP feature vectors. That includes preprocessing and LBP
+        # extraction but not model training.
         test_feature_prep_start = time.perf_counter()
 
         test_feature_records = prepare_test_feature_records(
@@ -307,6 +350,9 @@ def run_one_experiment(
         total_test_feature_preparation_time += test_feature_prep_time
 
         # 3c. prediction
+        # This timing block isolates classifier inference itself. Score prediction is
+        # optional at model level but is attempted here because later inspection and
+        # debugging tools can use the score values if they are available.
         prediction_start = time.perf_counter()
 
         predicted_labels = predict_labels(model=model, X_test=X_test)
@@ -323,6 +369,9 @@ def run_one_experiment(
         total_prediction_time += prediction_time
 
         # 3d. evaluation
+        # Image-level evaluation compares the predicted labels for this one test image
+        # against the labels loaded from the matching testX.txt file. The result is
+        # then merged into the running dataset-level totals.
         image_evaluation = evaluate_one_test_case(
             prediction_records=prediction_records,
             txt_path=txt_path,
@@ -359,6 +408,9 @@ def run_one_experiment(
 
     dataset_accuracy = compute_accuracy(dataset_confusion_counts)
 
+    # The final experiment_result dictionary is the standard package that later modules
+    # know how to rank, save, summarize, and inspect. It contains both the chosen
+    # configurations and the measured outcomes for that exact experiment run.
     experiment_result = {
         "preprocessing_config": preprocessing_config,
         "lbp_config": lbp_config,
@@ -394,6 +446,7 @@ def run_one_experiment(
         "per_image_results": per_image_results,
     }
 
+    # Return the finalized experiment package for ranking and saving.
     return experiment_result
 
 
@@ -409,6 +462,8 @@ def initialize_confusion_counts_for_search():
     totals, so it needs the same confusion-count structure as evaluation.py.
     """
 
+    # This local helper mirrors evaluation.initialize_confusion_counts() but keeps the
+    # search module self-contained when it needs a fresh accumulator structure.
     return {
         "tp": 0,
         "tn": 0,
@@ -455,7 +510,7 @@ def run_experiment_search(
     - ranking of the final results
 
     The assignment explicitly requires experimenting with multiple LBP
-    configurations and reporting accuracy and processing time for each. :contentReference[oaicite:1]{index=1}
+    configurations and reporting accuracy and processing time for each.
     """
 
     training_root = Path(training_root)
@@ -472,6 +527,9 @@ def run_experiment_search(
     # -------------------------------------------------------------------------
     # load shared inputs once
     # -------------------------------------------------------------------------
+    # Shared data is loaded only once before the search loop begins. This keeps the
+    # experiment comparison fair and avoids repeating dataset I/O for each candidate
+    # configuration.
     training_records = load_all_training_records(training_root)
     parking_map = load_parking_map(map_path)
     test_cases = load_test_images(test_images_dir)
@@ -486,10 +544,13 @@ def run_experiment_search(
         test_cases = test_cases[:max_test_cases]
 
     if not test_cases:
-        raise ValueError("No test cases are available for experiment search.")
+        raise ValueError("No test cases available for experiment search.")
 
     experiment_results = []
 
+    # The loop below is the actual search. Each experiment configuration is executed
+    # independently on the same shared dataset inputs, then its result dictionary is
+    # appended to the master results list for later ranking.
     for experiment_configuration in experiment_configurations:
         experiment_result = run_one_experiment(
             training_records=training_records,
@@ -501,7 +562,11 @@ def run_experiment_search(
             evaluation_config=experiment_configuration["evaluation_config"],
         )
 
-        experiment_result["experiment_index"] = experiment_configuration["experiment_index"]
+        experiment_result = {
+            "experiment_index": experiment_configuration["experiment_index"],
+            **experiment_result,
+        }
+
         experiment_results.append(experiment_result)
 
     ranked_results = rank_experiment_results(experiment_results)
@@ -512,4 +577,6 @@ def run_experiment_search(
         "ranked_results": ranked_results,
     }
 
+    # Return the full search package so the caller can both inspect the raw runs and
+    # use the already-ranked ordering.
     return search_result

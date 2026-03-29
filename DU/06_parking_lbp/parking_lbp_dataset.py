@@ -32,6 +32,15 @@ This module currently provides:
 - build_test_matrix(...)
 - summarize_feature_records(...)
 """
+# ---------------------------------------------------------------------------
+# Module orientation:
+# This module is the bridge between image-oriented records and matrix-oriented
+# machine-learning inputs. It takes training records or ROI records, sends them
+# through preprocessing and LBP extraction, and then converts the resulting
+# feature records into X / y arrays plus aligned metadata. In other words, this
+# is the place where rich record dictionaries are translated into classifier-
+# ready numeric tensors without losing traceability back to the original sample.
+# ---------------------------------------------------------------------------
 
 import numpy as np
 
@@ -71,10 +80,14 @@ def build_roi_like_record_from_training_record(training_record, space_index):
     This helper adapts the training-record structure to that expected format.
     """
 
+    # Reject unsupported inputs immediately so the main body of the function can assume
+    # the expected data structure and fail with clear errors when needed.
     if not isinstance(training_record, dict):
         raise TypeError("training_record must be a dictionary.")
 
     required_keys = {"image", "file_name", "file_path", "class_name", "label"}
+    # Assemble the standard output dictionary here so downstream modules receive both
+    # the computed values and the metadata needed for traceability.
     missing_keys = required_keys - set(training_record.keys())
 
     if missing_keys:
@@ -83,12 +96,18 @@ def build_roi_like_record_from_training_record(training_record, space_index):
             f"{sorted(missing_keys)}"
         )
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if not isinstance(space_index, int):
         raise TypeError("space_index must be an integer.")
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if space_index <= 0:
         raise ValueError("space_index must be a positive integer.")
 
+    # Assemble the standard output dictionary here so downstream modules receive both
+    # the computed values and the metadata needed for traceability.
     roi_like_record = {
         "source_image_name": training_record["file_name"],
         "space_index": space_index,
@@ -100,6 +119,8 @@ def build_roi_like_record_from_training_record(training_record, space_index):
         "label": training_record["label"],
     }
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return roi_like_record
 
 
@@ -120,11 +141,17 @@ def build_roi_like_records_from_training_records(training_records):
     - already cropped parking patches from the training set
     """
 
+    # Reject unsupported inputs immediately so the main body of the function can assume
+    # the expected data structure and fail with clear errors when needed.
     if not isinstance(training_records, list):
         raise TypeError("training_records must be a list.")
 
+    # Start an accumulation structure that will be filled gradually as the function
+    # walks through samples, records, rows, or files.
     roi_like_records = []
 
+    # Process items in a deterministic order so the produced outputs stay aligned with
+    # the corresponding inputs, labels, or metadata.
     for space_index, training_record in enumerate(training_records, start=1):
         roi_like_record = build_roi_like_record_from_training_record(
             training_record=training_record,
@@ -132,6 +159,8 @@ def build_roi_like_records_from_training_records(training_records):
         )
         roi_like_records.append(roi_like_record)
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return roi_like_records
 
 
@@ -164,12 +193,18 @@ def prepare_feature_records_from_roi_records(
     in one clean place.
     """
 
+    # Reject unsupported inputs immediately so the main body of the function can assume
+    # the expected data structure and fail with clear errors when needed.
     if not isinstance(roi_records, list):
         raise TypeError("roi_records must be a list.")
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if not isinstance(preprocessing_config, dict):
         raise TypeError("preprocessing_config must be a dictionary.")
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if not isinstance(lbp_config, dict):
         raise TypeError("lbp_config must be a dictionary.")
 
@@ -183,6 +218,8 @@ def prepare_feature_records_from_roi_records(
         lbp_config=lbp_config,
     )
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return feature_records
 
 
@@ -208,6 +245,8 @@ def prepare_training_feature_records(
     preprocessing + LBP pipeline can be applied.
     """
 
+    # Set up the local working state first so the later processing steps can operate on
+    # explicit, well-named intermediate values.
     roi_like_records = build_roi_like_records_from_training_records(
         training_records=training_records,
     )
@@ -218,6 +257,8 @@ def prepare_training_feature_records(
         lbp_config=lbp_config,
     )
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return training_feature_records
 
 
@@ -242,12 +283,16 @@ def prepare_test_feature_records(
     sent directly through the common preprocessing + LBP feature pipeline.
     """
 
+    # Set up the local working state first so the later processing steps can operate on
+    # explicit, well-named intermediate values.
     test_feature_records = prepare_feature_records_from_roi_records(
         roi_records=test_roi_records,
         preprocessing_config=preprocessing_config,
         lbp_config=lbp_config,
     )
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return test_feature_records
 
 
@@ -267,15 +312,23 @@ def build_feature_matrix(feature_records):
     should receive a standard feature matrix with one row per sample.
     """
 
+    # Reject unsupported inputs immediately so the main body of the function can assume
+    # the expected data structure and fail with clear errors when needed.
     if not isinstance(feature_records, list):
         raise TypeError("feature_records must be a list.")
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if not feature_records:
         raise ValueError("feature_records must not be empty.")
 
+    # Start an accumulation structure that will be filled gradually as the function
+    # walks through samples, records, rows, or files.
     feature_vectors = []
     expected_length = None
 
+    # Process items in a deterministic order so the produced outputs stay aligned with
+    # the corresponding inputs, labels, or metadata.
     for record_index, record in enumerate(feature_records, start=1):
         if not isinstance(record, dict):
             raise TypeError("Each feature record must be a dictionary.")
@@ -307,6 +360,8 @@ def build_feature_matrix(feature_records):
 
     X = np.vstack(feature_vectors).astype(np.float32)
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return X
 
 
@@ -327,14 +382,22 @@ def build_label_vector(feature_records):
     the rows of the feature matrix.
     """
 
+    # Reject unsupported inputs immediately so the main body of the function can assume
+    # the expected data structure and fail with clear errors when needed.
     if not isinstance(feature_records, list):
         raise TypeError("feature_records must be a list.")
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if not feature_records:
         raise ValueError("feature_records must not be empty.")
 
+    # Start an accumulation structure that will be filled gradually as the function
+    # walks through samples, records, rows, or files.
     labels = []
 
+    # Process items in a deterministic order so the produced outputs stay aligned with
+    # the corresponding inputs, labels, or metadata.
     for record_index, record in enumerate(feature_records, start=1):
         if not isinstance(record, dict):
             raise TypeError("Each feature record must be a dictionary.")
@@ -355,6 +418,8 @@ def build_label_vector(feature_records):
 
     y = np.asarray(labels, dtype=np.int64)
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return y
 
 
@@ -382,6 +447,8 @@ def build_metadata_list(feature_records):
     debugging, inspection, or evaluation.
     """
 
+    # Reject unsupported inputs immediately so the main body of the function can assume
+    # the expected data structure and fail with clear errors when needed.
     if not isinstance(feature_records, list):
         raise TypeError("feature_records must be a list.")
 
@@ -395,8 +462,12 @@ def build_metadata_list(feature_records):
         "label",
     ]
 
+    # Start an accumulation structure that will be filled gradually as the function
+    # walks through samples, records, rows, or files.
     metadata_list = []
 
+    # Process the collection item by item, updating the running result structure as each
+    # sample contributes its part of the final output.
     for record in feature_records:
         if not isinstance(record, dict):
             raise TypeError("Each feature record must be a dictionary.")
@@ -409,6 +480,8 @@ def build_metadata_list(feature_records):
 
         metadata_list.append(metadata)
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return metadata_list
 
 
@@ -431,10 +504,14 @@ def build_training_matrix_and_labels(training_feature_records):
     It is a convenience wrapper for the common supervised-learning case.
     """
 
+    # Set up the local working state first so the later processing steps can operate on
+    # explicit, well-named intermediate values.
     X_train = build_feature_matrix(training_feature_records)
     y_train = build_label_vector(training_feature_records)
     metadata_list = build_metadata_list(training_feature_records)
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return X_train, y_train, metadata_list
 
 
@@ -456,9 +533,13 @@ def build_test_matrix(test_feature_records):
     predictions back to parking-space indices and source images.
     """
 
+    # Set up the local working state first so the later processing steps can operate on
+    # explicit, well-named intermediate values.
     X_test = build_feature_matrix(test_feature_records)
     metadata_list = build_metadata_list(test_feature_records)
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return X_test, metadata_list
 
 
@@ -483,6 +564,8 @@ def summarize_feature_records(feature_records):
     before moving on to classifier training and prediction.
     """
 
+    # Reject unsupported inputs immediately so the main body of the function can assume
+    # the expected data structure and fail with clear errors when needed.
     if not isinstance(feature_records, list):
         raise TypeError("feature_records must be a list.")
 
@@ -492,6 +575,8 @@ def summarize_feature_records(feature_records):
     source_image_names_present = set()
     has_labels = False
 
+    # Process items in a deterministic order so the produced outputs stay aligned with
+    # the corresponding inputs, labels, or metadata.
     for record_index, record in enumerate(feature_records, start=1):
         if not isinstance(record, dict):
             raise TypeError("Each feature record must be a dictionary.")
@@ -520,6 +605,8 @@ def summarize_feature_records(feature_records):
         if "source_image_name" in record:
             source_image_names_present.add(record["source_image_name"])
 
+    # Assemble the standard output dictionary here so downstream modules receive both
+    # the computed values and the metadata needed for traceability.
     summary = {
         "total_count": len(feature_records),
         "feature_lengths_present": sorted(feature_lengths_present),
@@ -529,4 +616,6 @@ def summarize_feature_records(feature_records):
         "has_labels": has_labels,
     }
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return summary

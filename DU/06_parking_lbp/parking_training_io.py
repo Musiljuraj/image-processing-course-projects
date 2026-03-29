@@ -24,6 +24,14 @@ This module currently provides:
 - load_all_training_records(...)
 - summarize_training_records(...)
 """
+# ---------------------------------------------------------------------------
+# Module orientation:
+# This module loads the supervised parking training dataset from its folder
+# structure and converts it into structured training records. Later pipeline
+# stages no longer need to care where each sample came from on disk; they only
+# need the standardized record form that carries the image, the class name, and
+# the binary label together.
+# ---------------------------------------------------------------------------
 
 from pathlib import Path
 
@@ -62,13 +70,19 @@ def validate_training_dataset_structure(training_root):
     error than to fail later in image collection or image loading.
     """
 
+    # Convert incoming path-like inputs to Path objects at the start so all later
+    # filesystem work uses one consistent path representation.
     training_root = Path(training_root)
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if not training_root.exists():
         raise FileNotFoundError(
             f"Training root directory does not exist: {training_root}"
         )
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if not training_root.is_dir():
         raise NotADirectoryError(
             f"Training root path is not a directory: {training_root}"
@@ -77,17 +91,25 @@ def validate_training_dataset_structure(training_root):
     free_dir = training_root / "free"
     full_dir = training_root / "full"
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if not free_dir.exists():
         raise FileNotFoundError(f"Missing training class directory: {free_dir}")
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if not free_dir.is_dir():
         raise NotADirectoryError(
             f"Training class path is not a directory: {free_dir}"
         )
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if not full_dir.exists():
         raise FileNotFoundError(f"Missing training class directory: {full_dir}")
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if not full_dir.is_dir():
         raise NotADirectoryError(
             f"Training class path is not a directory: {full_dir}"
@@ -98,6 +120,8 @@ def validate_training_dataset_structure(training_root):
         "full": full_dir,
     }
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return class_dirs
 
 
@@ -127,11 +151,17 @@ def collect_image_paths_from_class_dir(
     - sort them deterministically
     """
 
+    # Convert incoming path-like inputs to Path objects at the start so all later
+    # filesystem work uses one consistent path representation.
     class_dir = Path(class_dir)
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if not class_dir.exists():
         raise FileNotFoundError(f"Class directory does not exist: {class_dir}")
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if not class_dir.is_dir():
         raise NotADirectoryError(f"Class path is not a directory: {class_dir}")
 
@@ -139,6 +169,8 @@ def collect_image_paths_from_class_dir(
 
     image_paths = []
 
+    # Process the collection item by item, updating the running result structure as each
+    # sample contributes its part of the final output.
     for path in class_dir.iterdir():
         if not path.is_file():
             continue
@@ -148,6 +180,8 @@ def collect_image_paths_from_class_dir(
 
     image_paths = sorted(image_paths, key=lambda path: path.name.lower())
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return image_paths
 
 
@@ -166,19 +200,29 @@ def load_one_training_image(image_path):
     clear and consistent error message.
     """
 
+    # Convert incoming path-like inputs to Path objects at the start so all later
+    # filesystem work uses one consistent path representation.
     image_path = Path(image_path)
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if not image_path.exists():
         raise FileNotFoundError(f"Training image file does not exist: {image_path}")
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if not image_path.is_file():
         raise FileNotFoundError(f"Training image path is not a file: {image_path}")
 
     image = cv2.imread(str(image_path))
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if image is None:
         raise ValueError(f"Could not read training image: {image_path}")
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return image
 
 
@@ -207,8 +251,12 @@ def build_one_training_record(image_path, image, class_name, label):
     not with loose tuples or mixed ad-hoc structures.
     """
 
+    # Convert incoming path-like inputs to Path objects at the start so all later
+    # filesystem work uses one consistent path representation.
     image_path = Path(image_path)
 
+    # Assemble the standard output dictionary here so downstream modules receive both
+    # the computed values and the metadata needed for traceability.
     training_record = {
         "file_path": image_path,
         "file_name": image_path.name,
@@ -217,6 +265,8 @@ def build_one_training_record(image_path, image, class_name, label):
         "image": image,
     }
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return training_record
 
 
@@ -244,17 +294,23 @@ def load_training_records_from_class_dir(
     be implemented once and reused for both classes.
     """
 
+    # Reject unsupported inputs immediately so the main body of the function can assume
+    # the expected data structure and fail with clear errors when needed.
     if not isinstance(class_name, str):
         raise TypeError("class_name must be a string.")
 
     normalized_class_name = class_name.strip().lower()
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if normalized_class_name not in LABEL_BY_CLASS_NAME:
         raise ValueError(
             "Unsupported class_name. Expected one of: "
             f"{list(LABEL_BY_CLASS_NAME.keys())}. Got: {class_name}"
         )
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if not isinstance(label, int):
         raise TypeError("label must be an integer.")
 
@@ -263,13 +319,19 @@ def load_training_records_from_class_dir(
         supported_extensions=supported_extensions,
     )
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if not image_paths:
         raise ValueError(
             f"No supported training images were found in directory: {class_dir}"
         )
 
+    # Start an accumulation structure that will be filled gradually as the function
+    # walks through samples, records, rows, or files.
     training_records = []
 
+    # Process the collection item by item, updating the running result structure as each
+    # sample contributes its part of the final output.
     for image_path in image_paths:
         image = load_one_training_image(image_path)
 
@@ -282,6 +344,8 @@ def load_training_records_from_class_dir(
 
         training_records.append(training_record)
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return training_records
 
 
@@ -310,6 +374,8 @@ def load_all_training_records(
     They should be able to call one function and receive ready-to-use records.
     """
 
+    # Read configuration values and normalize them up front so the rest of the function
+    # can rely on one stable internal convention.
     class_dirs = validate_training_dataset_structure(training_root)
 
     free_records = load_training_records_from_class_dir(
@@ -328,6 +394,8 @@ def load_all_training_records(
 
     training_records = free_records + full_records
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return training_records
 
 
@@ -351,6 +419,8 @@ def summarize_training_records(training_records):
     dataset loading before moving on to preprocessing and classifier training.
     """
 
+    # Reject unsupported inputs immediately so the main body of the function can assume
+    # the expected data structure and fail with clear errors when needed.
     if not isinstance(training_records, list):
         raise TypeError("training_records must be a list.")
 
@@ -359,6 +429,8 @@ def summarize_training_records(training_records):
     class_names_present = set()
     labels_present = set()
 
+    # Process the collection item by item, updating the running result structure as each
+    # sample contributes its part of the final output.
     for record in training_records:
         if not isinstance(record, dict):
             raise TypeError("Each training record must be a dictionary.")
@@ -384,6 +456,8 @@ def summarize_training_records(training_records):
                 f"Unsupported class_name in training record: {class_name}"
             )
 
+    # Assemble the standard output dictionary here so downstream modules receive both
+    # the computed values and the metadata needed for traceability.
     summary = {
         "total_count": len(training_records),
         "free_count": free_count,
@@ -392,4 +466,6 @@ def summarize_training_records(training_records):
         "labels_present": sorted(labels_present),
     }
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return summary

@@ -15,6 +15,13 @@ one parking place should become one independent ROI patch.
 
 That is a distinct processing phase, so it deserves its own module.
 """
+# ---------------------------------------------------------------------------
+# Module orientation:
+# This module turns the global parking-lot scene into independent parking-space
+# samples. It relies on the geometric transform defined in geometry.py and
+# packages each extracted patch as an ROI record, which is the standard input
+# form expected by preprocessing.py and later pipeline stages.
+# ---------------------------------------------------------------------------
 
 from geometry import four_point_transform
 
@@ -47,6 +54,8 @@ def extract_one_roi(image, parking_polygon, space_index, image_name):
     # apply perspective transform to obtain a rectangular ROI patch
     roi_image = four_point_transform(image, parking_polygon)
 
+    # Assemble the standard output dictionary here so downstream modules receive both
+    # the computed values and the metadata needed for traceability.
     roi_record = {
         "source_image_name": image_name,
         "space_index": space_index,
@@ -54,6 +63,8 @@ def extract_one_roi(image, parking_polygon, space_index, image_name):
         "roi_image": roi_image,
     }
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return roi_record
 
 
@@ -79,6 +90,8 @@ def extract_all_rois_from_image(image, parking_map, image_name):
     - after: one list of independent ROI patches, one per parking space
     """
 
+    # Set up the local working state first so the later processing steps can operate on
+    # explicit, well-named intermediate values.
     rois = []
 
     # enumerate parking spaces starting from 1,
@@ -92,4 +105,6 @@ def extract_all_rois_from_image(image, parking_map, image_name):
         )
         rois.append(roi_record)
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return rois

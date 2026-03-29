@@ -23,6 +23,18 @@ from parking_lbp_classifier import (
 from evaluation import evaluate_one_test_case
 from debug_utils import draw_parking_map, save_overlay_image, save_processed_patches
 
+# ---------------------------------------------------------------------------
+# Module orientation:
+# This module is a post-search inspection utility. After the main experiment
+# search has ranked configurations and saved them to CSV, this module reloads
+# the best-ranked configuration, reconstructs its parameter dictionaries,
+# reruns that exact pipeline on one selected test image, evaluates the result,
+# and saves a collection of human-readable inspection outputs. Its purpose is
+# not to search for the best setup again, but to make the already-selected best
+# setup understandable at the level of individual parking spaces and image
+# representations.
+# ---------------------------------------------------------------------------
+
 
 def parse_flat_value(value):
     """
@@ -36,6 +48,9 @@ def parse_flat_value(value):
         "uniform"  -> "uniform"
     """
 
+    # CSV rows store all values as text, so this helper reverses that flattening as much
+    # as is safely possible. Literal numbers, tuples, and booleans are restored, while
+    # plain free-form strings remain strings.
     if value is None:
         return None
 
@@ -72,6 +87,10 @@ def parse_prefixed_config_from_row(row, prefix):
             }
     """
 
+    # Each saved CSV row contains multiple flattened configuration blocks mixed together.
+    # The prefix convention created in results_io.py allows this helper to rebuild one
+    # original config block by selecting only the keys that start with the requested
+    # prefix and then stripping that prefix from the key names.
     if not isinstance(row, dict):
         raise TypeError("row must be a dictionary.")
 
@@ -105,6 +124,9 @@ def load_best_result_row(csv_path):
     if not csv_path.exists():
         raise FileNotFoundError(f"Results CSV not found: {csv_path}")
 
+    # The saved experiment CSV is already sorted by rank, so the first data row is the
+    # best-ranked configuration according to the project ranking rule. This helper simply
+    # loads that row and returns it unchanged.
     with open(csv_path, "r", encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
         rows = list(reader)
@@ -120,6 +142,9 @@ def select_test_case(test_cases, test_case_name=None):
     Select one test case by name, or return the first one by default.
     """
 
+    # The inspection utility typically needs only one test image. If the caller does not
+    # specify which one, the first image in the already-sorted list is used as the
+    # default. This keeps the helper convenient for quick inspection.
     if not isinstance(test_cases, list):
         raise TypeError("test_cases must be a list.")
 
@@ -146,6 +171,9 @@ def convert_lbp_image_to_visualization(lbp_image):
     Convert an LBP-coded image into an 8-bit visualization suitable for saving.
     """
 
+    # LBP codes are numerical descriptors, not directly intended for normal image
+    # display. This helper rescales the code values to the 0-255 range so the result can
+    # be saved as a human-viewable image for debugging and inspection.
     lbp_float = lbp_image.astype(np.float32)
 
     min_value = float(lbp_float.min())
@@ -168,6 +196,9 @@ def save_lbp_visualizations(feature_records, output_dir):
         ...
     """
 
+    # This helper mirrors the generic patch-saving utilities in debug_utils.py, but it
+    # first converts each numerical LBP image into a viewable 8-bit image before
+    # writing it to disk.
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -209,6 +240,9 @@ def save_evaluated_records_report(evaluated_records, report_path):
     - optional score
     """
 
+    # The goal here is to create one lightweight text file that summarizes what happened
+    # for each parking space in the selected test image. This is especially useful when
+    # visual outputs and numeric evaluation need to be cross-checked by hand.
     report_path = Path(report_path)
     report_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -284,6 +318,9 @@ def inspect_best_configuration(
     # -------------------------------------------------------------------------
     # 1. load best-ranked row and reconstruct configs
     # -------------------------------------------------------------------------
+    # The main experiment search stores flattened config values in a ranked CSV. This
+    # stage rebuilds the original nested config dictionaries so the exact winning
+    # configuration can be rerun without manual transcription.
     best_row = load_best_result_row(results_csv_path)
 
     preprocessing_config = parse_prefixed_config_from_row(best_row, "preprocessing")
@@ -300,6 +337,9 @@ def inspect_best_configuration(
     # -------------------------------------------------------------------------
     # 2. load shared inputs
     # -------------------------------------------------------------------------
+    # Shared project inputs are loaded exactly the same way as in the main search, but
+    # this inspection run focuses on just one selected test image instead of the whole
+    # dataset.
     training_records = load_all_training_records(training_root)
     parking_map = load_parking_map(map_path)
     test_cases = load_test_images(test_images_dir)
@@ -308,6 +348,8 @@ def inspect_best_configuration(
     # -------------------------------------------------------------------------
     # 3. prepare training data and train classifier
     # -------------------------------------------------------------------------
+    # The best configuration is retrained from scratch here so the inspection reflects a
+    # real rerun of the same pipeline, not merely a replay of saved outputs.
     training_feature_records = prepare_training_feature_records(
         training_records=training_records,
         preprocessing_config=preprocessing_config,
@@ -327,6 +369,9 @@ def inspect_best_configuration(
     # -------------------------------------------------------------------------
     # 4. prepare selected test image and predict
     # -------------------------------------------------------------------------
+    # This mirrors the per-image processing path used in experiment_search.py:
+    # scene image -> ROI records -> test feature records -> prediction records ->
+    # evaluation against the matching ground-truth file.
     roi_records = extract_all_rois_from_image(
         image=test_case["image"],
         parking_map=parking_map,
@@ -361,6 +406,9 @@ def inspect_best_configuration(
     # -------------------------------------------------------------------------
     # 5. save visual outputs
     # -------------------------------------------------------------------------
+    # The inspection output set is intentionally broad: one overlay for spatial context,
+    # one folder of raw ROIs, one folder of processed images, one folder of LBP
+    # visualizations, and one text report of per-space evaluation details.
     overlay_dir = output_dir / "overlay"
     roi_dir = output_dir / "roi"
     processed_dir = output_dir / "processed"
@@ -393,6 +441,9 @@ def inspect_best_configuration(
         report_path=report_dir / f"{test_case['name']}_inspection_report.txt",
     )
 
+    # The returned inspection_result dictionary is a compact summary of everything this
+    # rerun produced, including the configs used, the image-level evaluation, and the
+    # paths of the saved inspection artifacts.
     inspection_result = {
         "best_row": best_row,
         "preprocessing_config": preprocessing_config,
@@ -420,6 +471,8 @@ def main():
     Default entry point for best-configuration inspection.
     """
 
+    # This top-level entry point mirrors the structure of main.py but targets the
+    # inspection workflow rather than the full experiment search.
     project_root = Path(__file__).resolve().parent
 
     results_csv_path = (
@@ -445,19 +498,17 @@ def main():
     )
 
     image_evaluation = inspection_result["image_evaluation"]
-    confusion_counts = image_evaluation["confusion_counts"]
 
-    print("=== BEST CONFIG INSPECTION ===")
+    print("=== BEST CONFIGURATION INSPECTION ===")
     print(f"selected_test_case_name : {inspection_result['selected_test_case_name']}")
     print(f"accuracy                : {image_evaluation['accuracy']:.6f}")
     print(f"num_samples             : {image_evaluation['num_samples']}")
-    print(f"tp                      : {confusion_counts['tp']}")
-    print(f"tn                      : {confusion_counts['tn']}")
-    print(f"fp                      : {confusion_counts['fp']}")
-    print(f"fn                      : {confusion_counts['fn']}")
+    print(f"confusion_counts        : {image_evaluation['confusion_counts']}")
     print(f"overlay_path            : {inspection_result['saved_paths']['overlay_path']}")
+    print(f"roi_count               : {len(inspection_result['saved_paths']['roi_paths'])}")
+    print(f"processed_count         : {len(inspection_result['saved_paths']['processed_paths'])}")
+    print(f"lbp_count               : {len(inspection_result['saved_paths']['lbp_paths'])}")
     print(f"report_path             : {inspection_result['saved_paths']['report_path']}")
-    print("Inspection finished successfully.")
 
 
 if __name__ == "__main__":

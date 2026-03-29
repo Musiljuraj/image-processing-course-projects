@@ -17,6 +17,13 @@ The geometry of one parking place is a separate concern from:
 
 This separation keeps the project easier to understand and maintain.
 """
+# ---------------------------------------------------------------------------
+# Module orientation:
+# This module contains the geometric normalization step that converts one
+# parking-space quadrilateral from the original camera view into one rectangular
+# ROI patch. Later modules assume that every parking-space sample can be treated
+# as an ordinary image patch; this module is the reason that assumption holds.
+# ---------------------------------------------------------------------------
 
 import cv2
 import numpy as np
@@ -51,6 +58,8 @@ def order_points(pts):
     - bottom-left  has the largest y - x
     """
 
+    # Set up the local working state first so the later processing steps can operate on
+    # explicit, well-named intermediate values.
     rect = np.zeros((4, 2), dtype="float32")
 
     # compute x + y for every point
@@ -63,6 +72,8 @@ def order_points(pts):
     rect[1] = pts[np.argmin(diff)]  # top-right
     rect[3] = pts[np.argmax(diff)]  # bottom-left
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return rect
 
 
@@ -134,4 +145,6 @@ def four_point_transform(image, one_c):
     M = cv2.getPerspectiveTransform(rect, dst)
     warped = cv2.warpPerspective(image, M, (maxWidth, maxHeight))
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return warped

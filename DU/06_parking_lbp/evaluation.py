@@ -34,6 +34,16 @@ Expected label convention by default:
 - occupied_label = 1
 - empty_label = 0
 """
+# ---------------------------------------------------------------------------
+# Module orientation:
+# This module is the final judging stage of the parking pipeline. Upstream
+# modules prepare feature records and prediction records; this module compares
+# those predicted labels against the ground-truth labels stored next to each
+# test image. The shared terminology used here matches the rest of the project:
+# a prediction record belongs to one parking space, multiple records form one
+# image-level result, and multiple image-level results are later merged into a
+# dataset-level experiment result.
+# ---------------------------------------------------------------------------
 
 from pathlib import Path
 
@@ -61,13 +71,21 @@ def validate_evaluation_config(evaluation_config):
     Instead, it is normalized once and then reused consistently.
     """
 
+    # Reject unsupported inputs immediately so the main body of the function can assume
+    # the expected data structure and fail with clear errors when needed.
     if evaluation_config is None:
         evaluation_config = {}
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if not isinstance(evaluation_config, dict):
         raise TypeError("evaluation_config must be a dictionary or None.")
 
+    # Resolve configuration-dependent values into local variables here so the later
+    # logic can use short, consistent names.
     occupied_label = evaluation_config.get("occupied_label", 1)
+    # Resolve configuration-dependent values into local variables here so the later
+    # logic can use short, consistent names.
     empty_label = evaluation_config.get("empty_label", 0)
 
     if occupied_label == empty_label:
@@ -78,6 +96,8 @@ def validate_evaluation_config(evaluation_config):
         "empty_label": empty_label,
     }
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return normalized_config
 
 
@@ -96,6 +116,8 @@ def validate_classification_evaluation_config(classification_evaluation_config):
     makes the transition to the new classifier-based evaluation slightly easier.
     """
 
+    # This wrapper keeps the surrounding API simple and delegates the actual work to the
+    # shared helper that already implements the full logic.
     return validate_evaluation_config(classification_evaluation_config)
 
 
@@ -110,9 +132,13 @@ def _normalize_label_value(label):
         normalized_label ... normalized scalar value
     """
 
+    # Reject unsupported inputs immediately so the main body of the function can assume
+    # the expected data structure and fail with clear errors when needed.
     if isinstance(label, np.generic):
         return label.item()
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return label
 
 
@@ -132,17 +158,23 @@ def validate_ground_truth_label(label, evaluation_config):
     outside the configured label convention.
     """
 
+    # Read configuration values and normalize them up front so the rest of the function
+    # can rely on one stable internal convention.
     label = _normalize_label_value(label)
 
     occupied_label = evaluation_config["occupied_label"]
     empty_label = evaluation_config["empty_label"]
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if label not in (occupied_label, empty_label):
         raise ValueError(
             "Ground-truth label has unsupported value. "
             f"Expected one of ({empty_label}, {occupied_label}), got: {label}"
         )
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return label
 
 
@@ -162,17 +194,23 @@ def validate_predicted_label(label, evaluation_config):
     the configured label convention.
     """
 
+    # Read configuration values and normalize them up front so the rest of the function
+    # can rely on one stable internal convention.
     label = _normalize_label_value(label)
 
     occupied_label = evaluation_config["occupied_label"]
     empty_label = evaluation_config["empty_label"]
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if label not in (occupied_label, empty_label):
         raise ValueError(
             "Predicted label has unsupported value. "
             f"Expected one of ({empty_label}, {occupied_label}), got: {label}"
         )
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return label
 
 
@@ -192,6 +230,8 @@ def initialize_confusion_counts():
     evaluation compatible and easy to merge.
     """
 
+    # This wrapper keeps the surrounding API simple and delegates the actual work to the
+    # shared helper that already implements the full logic.
     return {
         "tp": 0,
         "tn": 0,
@@ -216,6 +256,8 @@ def merge_confusion_counts(base_counts, additional_counts):
     accumulation of TP / TN / FP / FN.
     """
 
+    # Package the already available values into the standard dictionary structure used
+    # by the rest of the pipeline.
     merged_counts = {
         "tp": base_counts["tp"] + additional_counts["tp"],
         "tn": base_counts["tn"] + additional_counts["tn"],
@@ -223,6 +265,8 @@ def merge_confusion_counts(base_counts, additional_counts):
         "fn": base_counts["fn"] + additional_counts["fn"],
     }
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return merged_counts
 
 
@@ -242,6 +286,8 @@ def compute_accuracy(confusion_counts):
     If there are no samples, 0.0 is returned to avoid division by zero.
     """
 
+    # Set up the local working state first so the later processing steps can operate on
+    # explicit, well-named intermediate values.
     total = (
         confusion_counts["tp"]
         + confusion_counts["tn"]
@@ -252,6 +298,8 @@ def compute_accuracy(confusion_counts):
     if total == 0:
         return 0.0
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return (confusion_counts["tp"] + confusion_counts["tn"]) / total
 
 
@@ -272,6 +320,8 @@ def _determine_evaluation_outcome(predicted_label, ground_truth_label, evaluatio
     occupied_label = evaluation_config["occupied_label"]
     empty_label = evaluation_config["empty_label"]
 
+    # The four branches below translate the shared binary label convention into the
+    # standard confusion-count terminology used by the rest of the evaluation logic.
     if predicted_label == occupied_label and ground_truth_label == occupied_label:
         return "tp"
 
@@ -312,6 +362,8 @@ def evaluate_predicted_labels(predicted_labels, ground_truth_labels, evaluation_
     This function provides a minimal label-only evaluation path.
     """
 
+    # Read configuration values and normalize them up front so the rest of the function
+    # can rely on one stable internal convention.
     normalized_config = validate_evaluation_config(evaluation_config)
 
     predicted_labels_array = np.asarray(predicted_labels)
@@ -321,6 +373,8 @@ def evaluate_predicted_labels(predicted_labels, ground_truth_labels, evaluation_
 
     ground_truth_labels_list = list(ground_truth_labels)
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if len(predicted_labels_array) != len(ground_truth_labels_list):
         raise ValueError(
             "Number of predicted labels does not match number of ground-truth labels. "
@@ -331,6 +385,8 @@ def evaluate_predicted_labels(predicted_labels, ground_truth_labels, evaluation_
     confusion_counts = initialize_confusion_counts()
     evaluated_items = []
 
+    # Process items in a deterministic order so the produced outputs stay aligned with
+    # the corresponding inputs, labels, or metadata.
     for sample_index, (predicted_label, ground_truth_label) in enumerate(
         zip(predicted_labels_array, ground_truth_labels_list),
         start=1,
@@ -362,6 +418,8 @@ def evaluate_predicted_labels(predicted_labels, ground_truth_labels, evaluation_
 
     accuracy = compute_accuracy(confusion_counts)
 
+    # Assemble the standard output dictionary here so downstream modules receive both
+    # the computed values and the metadata needed for traceability.
     evaluation_result = {
         "evaluated_items": evaluated_items,
         "confusion_counts": confusion_counts,
@@ -370,6 +428,8 @@ def evaluate_predicted_labels(predicted_labels, ground_truth_labels, evaluation_
         "evaluation_config": normalized_config,
     }
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return evaluation_result
 
 
@@ -412,13 +472,19 @@ def evaluate_prediction_records(
     - prediction records preserve that order
     """
 
+    # Read configuration values and normalize them up front so the rest of the function
+    # can rely on one stable internal convention.
     normalized_config = validate_evaluation_config(evaluation_config)
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if not isinstance(prediction_records, list):
         raise TypeError("prediction_records must be a list.")
 
     ground_truth_labels_list = list(ground_truth_labels)
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if len(prediction_records) != len(ground_truth_labels_list):
         raise ValueError(
             "Number of prediction records does not match number of ground-truth labels. "
@@ -427,8 +493,12 @@ def evaluate_prediction_records(
         )
 
     confusion_counts = initialize_confusion_counts()
+    # Start an accumulation structure that will be filled gradually as the function
+    # walks through samples, records, rows, or files.
     evaluated_records = []
 
+    # Process items in a deterministic order so the produced outputs stay aligned with
+    # the corresponding inputs, labels, or metadata.
     for prediction_record, ground_truth_label in zip(
         prediction_records,
         ground_truth_labels_list,
@@ -467,6 +537,8 @@ def evaluate_prediction_records(
 
     accuracy = compute_accuracy(confusion_counts)
 
+    # Assemble the standard output dictionary here so downstream modules receive both
+    # the computed values and the metadata needed for traceability.
     image_evaluation = {
         "evaluated_records": evaluated_records,
         "confusion_counts": confusion_counts,
@@ -475,6 +547,8 @@ def evaluate_prediction_records(
         "evaluation_config": normalized_config,
     }
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return image_evaluation
 
 
@@ -500,6 +574,8 @@ def evaluate_one_image(
     easier while preserving a natural per-image evaluation unit.
     """
 
+    # This wrapper keeps the surrounding API simple and delegates the actual work to the
+    # shared helper that already implements the full logic.
     return evaluate_prediction_records(
         prediction_records=prediction_records,
         ground_truth_labels=ground_truth_labels,
@@ -534,18 +610,26 @@ def evaluate_one_test_case(
     to manually load the ground-truth labels outside the evaluation module.
     """
 
+    # Convert incoming path-like inputs to Path objects at the start so all later
+    # filesystem work uses one consistent path representation.
     txt_path = Path(txt_path)
     ground_truth_labels = load_ground_truth_labels(txt_path)
 
+    # Assemble the standard output dictionary here so downstream modules receive both
+    # the computed values and the metadata needed for traceability.
     image_evaluation = evaluate_one_image(
         prediction_records=prediction_records,
         ground_truth_labels=ground_truth_labels,
         evaluation_config=evaluation_config,
     )
 
+    # Assemble the standard output dictionary here so downstream modules receive both
+    # the computed values and the metadata needed for traceability.
     image_evaluation = {
         **image_evaluation,
         "txt_path": txt_path,
     }
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return image_evaluation

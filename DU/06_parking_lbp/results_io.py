@@ -27,6 +27,16 @@ This module currently provides:
 - save_experiment_summary_text(...)
 - save_experiment_outputs(...)
 """
+# ---------------------------------------------------------------------------
+# Module orientation:
+# This module is the output formatting and persistence layer for experiment
+# results. Upstream code produces nested experiment-result dictionaries; this
+# module converts those structured results into a flat CSV table and a readable
+# text summary. The key design idea is that experiment execution and result
+# saving remain separate concerns, so the orchestration code can focus on
+# running experiments while this module focuses on making their outputs easy to
+# inspect and report.
+# ---------------------------------------------------------------------------
 
 from pathlib import Path
 import csv
@@ -82,6 +92,9 @@ def flatten_nested_dict(data, prefix=""):
     preprocessing_config / lbp_config / classifier_config are flattened.
     """
 
+    # The CSV writer expects one flat dictionary per row. This helper performs the
+    # recursive conversion from nested dict structure to a single-level key-value
+    # structure, preserving the original hierarchy by prefixing the keys.
     if data is None:
         return {}
 
@@ -135,6 +148,9 @@ def flatten_experiment_result(experiment_result):
     # -------------------------------------------------------------------------
     # 1. flatten known config blocks
     # -------------------------------------------------------------------------
+    # The known nested blocks are flattened first under explicit prefixes so the CSV
+    # column names clearly show which configuration group or metric group each value
+    # came from.
     flat_result.update(
         flatten_nested_dict(
             experiment_result.get("preprocessing_config"),
@@ -173,6 +189,8 @@ def flatten_experiment_result(experiment_result):
     # -------------------------------------------------------------------------
     # 2. copy common scalar result fields if present
     # -------------------------------------------------------------------------
+    # These are the scalar fields that are expected to be useful for direct sorting,
+    # filtering, and reporting in the output CSV.
     common_scalar_keys = [
         "accuracy",
         "num_samples",
@@ -194,6 +212,9 @@ def flatten_experiment_result(experiment_result):
     # -------------------------------------------------------------------------
     # 3. copy any other non-config scalar-like fields not already handled
     # -------------------------------------------------------------------------
+    # This last pass keeps the flattener flexible. If the experiment result contains
+    # extra fields beyond the expected standard ones, they are still preserved in a
+    # reasonable CSV-friendly form instead of being silently dropped.
     reserved_keys = {
         "preprocessing_config",
         "lbp_config",
@@ -237,6 +258,8 @@ def flatten_experiment_results(experiment_results):
 
     flat_results = []
 
+    # Each structured experiment result is flattened independently, producing one CSV
+    # row dictionary per experiment.
     for experiment_result in experiment_results:
         flat_result = flatten_experiment_result(experiment_result)
         flat_results.append(flat_result)
@@ -265,6 +288,9 @@ def rank_experiment_results(experiment_results):
     if not isinstance(experiment_results, list):
         raise TypeError("experiment_results must be a list.")
 
+    # The ranking rule is encoded explicitly here so the whole project uses one
+    # consistent definition of "best result". Accuracy dominates, total runtime breaks
+    # ties, and sample count is used as a final tie-breaker.
     ranked_results = sorted(
         experiment_results,
         key=lambda result: (
@@ -307,6 +333,8 @@ def save_experiment_results_csv(experiment_results, csv_path):
         return csv_path
 
     # collect union of all keys across all rows
+    # Because different experiment results may contain slightly different fields, the
+    # CSV header is built from the union of all keys appearing in all flattened rows.
     fieldnames = sorted(
         {
             key
@@ -340,6 +368,8 @@ def _format_config_for_summary(config):
         formatted_config ... string
     """
 
+    # The text summary is meant for quick reading, so config dictionaries are rendered
+    # as compact one-line JSON-like strings rather than as multi-line structures.
     if config is None:
         return "{}"
 
@@ -394,6 +424,8 @@ def save_experiment_summary_text(
             f.write("\n".join(lines))
         return summary_path
 
+    # The first ranked item is the best overall result, so it gets its own highlighted
+    # section before the more general top-k ranking list.
     best_result = ranked_results[0]
     best_confusion = best_result.get("confusion_counts", {})
 
@@ -427,6 +459,7 @@ def save_experiment_summary_text(
     lines.append(f"Top {min(top_k, len(ranked_results))} ranked results:")
     lines.append("-" * 80)
 
+    # The loop below produces one compact human-readable block per ranked result.
     for rank_index, result in enumerate(ranked_results[:top_k], start=1):
         confusion = result.get("confusion_counts", {})
 
@@ -475,20 +508,20 @@ def save_experiment_outputs(
 
     Inputs:
         experiment_results ... list of experiment-result dictionaries
-        output_dir ........... output directory
-        csv_filename ......... CSV filename inside output_dir
-        summary_filename ..... text-summary filename inside output_dir
-        top_k ................ number of detailed top results in text summary
+        output_dir ........... destination directory
+        csv_filename ......... output CSV filename
+        summary_filename ..... output summary filename
+        top_k ................ number of top-ranked results to include in summary
 
     Return:
         saved_outputs ........ dictionary containing:
-                              - output_dir
-                              - csv_path
-                              - summary_path
+                               - output_dir
+                               - csv_path
+                               - summary_path
 
     Why this function exists:
-    Main experiment scripts usually want one simple call that saves all
-    standard result artifacts together.
+    Most callers want both standard output formats, so this convenience wrapper
+    saves them together and returns the produced paths in one package.
     """
 
     output_dir = ensure_output_directory(output_dir)

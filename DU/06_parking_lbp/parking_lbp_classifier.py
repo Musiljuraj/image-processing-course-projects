@@ -36,6 +36,15 @@ This module currently provides:
 - train_and_predict(...)
 - summarize_predictions(...)
 """
+# ---------------------------------------------------------------------------
+# Module orientation:
+# This module is the supervised learning stage of the parking LBP pipeline.
+# Upstream code prepares feature matrices and aligned metadata; this module
+# validates classifier settings, builds the model, fits it on training data,
+# predicts labels for test samples, and optionally attaches those predictions
+# back to structured records. The same binary class convention is used across
+# the project: free = 0 and full / occupied = 1.
+# ---------------------------------------------------------------------------
 
 import numpy as np
 from sklearn.neighbors import KNeighborsClassifier
@@ -57,9 +66,13 @@ def normalize_classifier_name(classifier_name):
         normalized_classifier_name ... lowercase stripped string
     """
 
+    # Reject unsupported inputs immediately so the main body of the function can assume
+    # the expected data structure and fail with clear errors when needed.
     if not isinstance(classifier_name, str):
         raise TypeError("classifier_name must be a string.")
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return classifier_name.strip().lower()
 
 
@@ -95,12 +108,20 @@ def validate_classifier_config(classifier_config):
     ensures that configuration errors are caught early and clearly.
     """
 
+    # Reject unsupported inputs immediately so the main body of the function can assume
+    # the expected data structure and fail with clear errors when needed.
     if not isinstance(classifier_config, dict):
         raise TypeError("classifier_config must be a dictionary.")
 
+    # Resolve configuration-dependent values into local variables here so the later
+    # logic can use short, consistent names.
     classifier_name = classifier_config.get("classifier_name", "knn")
+    # Resolve configuration-dependent values into local variables here so the later
+    # logic can use short, consistent names.
     normalized_classifier_name = normalize_classifier_name(classifier_name)
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if normalized_classifier_name not in SUPPORTED_CLASSIFIER_NAMES:
         raise ValueError(
             "Unsupported classifier_name. Expected one of: "
@@ -108,6 +129,8 @@ def validate_classifier_config(classifier_config):
             f"Got: {classifier_name}"
         )
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if normalized_classifier_name == "knn":
         n_neighbors = classifier_config.get("n_neighbors", 3)
 
@@ -123,6 +146,8 @@ def validate_classifier_config(classifier_config):
         }
         return validated_config
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if normalized_classifier_name == "linear_svm":
         C = classifier_config.get("C", 1.0)
 
@@ -158,6 +183,8 @@ def build_classifier_model(classifier_config):
     - linear_svm . SVC with linear kernel
     """
 
+    # Read configuration values and normalize them up front so the rest of the function
+    # can rely on one stable internal convention.
     validated_config = validate_classifier_config(classifier_config)
     classifier_name = validated_config["classifier_name"]
 
@@ -192,6 +219,8 @@ def _validate_feature_matrix(X, matrix_name="X"):
         X_validated ... 2D NumPy array of dtype float32
     """
 
+    # Convert incoming data into the internal NumPy representation first so the later
+    # numerical operations are predictable and shape checks remain simple.
     X_validated = np.asarray(X, dtype=np.float32)
 
     if X_validated.ndim != 2:
@@ -203,9 +232,13 @@ def _validate_feature_matrix(X, matrix_name="X"):
     if X_validated.shape[1] == 0:
         raise ValueError(f"{matrix_name} must contain at least one feature.")
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if not np.isfinite(X_validated).all():
         raise ValueError(f"{matrix_name} contains non-finite values.")
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return X_validated
 
 
@@ -222,6 +255,8 @@ def _validate_label_vector(y, expected_length=None, vector_name="y"):
         y_validated ....... 1D NumPy array of dtype int64
     """
 
+    # Convert incoming data into the internal NumPy representation first so the later
+    # numerical operations are predictable and shape checks remain simple.
     y_validated = np.asarray(y, dtype=np.int64)
 
     if y_validated.ndim != 1:
@@ -230,6 +265,8 @@ def _validate_label_vector(y, expected_length=None, vector_name="y"):
     if y_validated.shape[0] == 0:
         raise ValueError(f"{vector_name} must contain at least one label.")
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if expected_length is not None and y_validated.shape[0] != expected_length:
         raise ValueError(
             f"{vector_name} length ({y_validated.shape[0]}) does not match "
@@ -238,6 +275,8 @@ def _validate_label_vector(y, expected_length=None, vector_name="y"):
 
     unique_labels = np.unique(y_validated)
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if not set(unique_labels.tolist()).issubset({0, 1}):
         raise ValueError(
             f"{vector_name} must contain only binary labels 0 and 1. "
@@ -250,6 +289,8 @@ def _validate_label_vector(y, expected_length=None, vector_name="y"):
             f"Got: {unique_labels.tolist()}"
         )
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return y_validated
 
 
@@ -272,7 +313,11 @@ def train_classifier(X_train, y_train, classifier_config):
     of the project independent of classifier-specific fitting details.
     """
 
+    # Read configuration values and normalize them up front so the rest of the function
+    # can rely on one stable internal convention.
     X_train_validated = _validate_feature_matrix(X_train, matrix_name="X_train")
+    # Resolve configuration-dependent values into local variables here so the later
+    # logic can use short, consistent names.
     y_train_validated = _validate_label_vector(
         y_train,
         expected_length=X_train_validated.shape[0],
@@ -282,6 +327,8 @@ def train_classifier(X_train, y_train, classifier_config):
     model = build_classifier_model(classifier_config)
     model.fit(X_train_validated, y_train_validated)
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return model
 
 
@@ -302,12 +349,18 @@ def predict_labels(model, X_test):
         1 = full
     """
 
+    # Reject unsupported inputs immediately so the main body of the function can assume
+    # the expected data structure and fail with clear errors when needed.
     if model is None:
         raise ValueError("model must not be None.")
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if not hasattr(model, "predict"):
         raise TypeError("model does not provide a predict(...) method.")
 
+    # Resolve configuration-dependent values into local variables here so the later
+    # logic can use short, consistent names.
     X_test_validated = _validate_feature_matrix(X_test, matrix_name="X_test")
 
     predicted_labels = model.predict(X_test_validated)
@@ -316,17 +369,23 @@ def predict_labels(model, X_test):
     if predicted_labels.ndim != 1:
         raise ValueError("Predicted labels must be a 1D array.")
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if predicted_labels.shape[0] != X_test_validated.shape[0]:
         raise ValueError(
             "Prediction count does not match the number of test samples."
         )
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if not set(np.unique(predicted_labels).tolist()).issubset({0, 1}):
         raise ValueError(
             "Predicted labels must contain only 0 and 1. "
             f"Got: {np.unique(predicted_labels).tolist()}"
         )
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return predicted_labels
 
 
@@ -349,9 +408,13 @@ def predict_scores(model, X_test):
     - otherwise None is returned
     """
 
+    # Reject unsupported inputs immediately so the main body of the function can assume
+    # the expected data structure and fail with clear errors when needed.
     if model is None:
         raise ValueError("model must not be None.")
 
+    # Resolve configuration-dependent values into local variables here so the later
+    # logic can use short, consistent names.
     X_test_validated = _validate_feature_matrix(X_test, matrix_name="X_test")
 
     if hasattr(model, "predict_proba"):
@@ -406,6 +469,8 @@ def predict_scores(model, X_test):
             "decision_function(...) returned an unsupported number of dimensions."
         )
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return None
 
 
@@ -433,6 +498,8 @@ def build_prediction_records(
     raw label arrays alone because they preserve metadata alongside outputs.
     """
 
+    # Reject unsupported inputs immediately so the main body of the function can assume
+    # the expected data structure and fail with clear errors when needed.
     if not isinstance(feature_records, list):
         raise TypeError("feature_records must be a list.")
 
@@ -441,12 +508,16 @@ def build_prediction_records(
     if predicted_labels_array.ndim != 1:
         raise ValueError("predicted_labels must be a 1D array.")
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if len(feature_records) != predicted_labels_array.shape[0]:
         raise ValueError(
             "feature_records length does not match predicted_labels length."
         )
 
     predicted_scores_array = None
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if predicted_scores is not None:
         predicted_scores_array = np.asarray(predicted_scores, dtype=np.float32)
 
@@ -458,8 +529,12 @@ def build_prediction_records(
                 "predicted_scores length does not match predicted_labels length."
             )
 
+    # Start an accumulation structure that will be filled gradually as the function
+    # walks through samples, records, rows, or files.
     prediction_records = []
 
+    # Process items in a deterministic order so the produced outputs stay aligned with
+    # the corresponding inputs, labels, or metadata.
     for index, feature_record in enumerate(feature_records):
         if not isinstance(feature_record, dict):
             raise TypeError("Each feature_record must be a dictionary.")
@@ -476,6 +551,8 @@ def build_prediction_records(
 
         prediction_records.append(prediction_record)
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return prediction_records
 
 
@@ -499,6 +576,8 @@ def train_and_predict(X_train, y_train, X_test, classifier_config):
     train->predict workflow is needed repeatedly.
     """
 
+    # Set up the local working state first so the later processing steps can operate on
+    # explicit, well-named intermediate values.
     trained_model = train_classifier(
         X_train=X_train,
         y_train=y_train,
@@ -515,6 +594,8 @@ def train_and_predict(X_train, y_train, X_test, classifier_config):
         X_test=X_test,
     )
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return trained_model, predicted_labels, predicted_scores
 
 
@@ -537,6 +618,8 @@ def summarize_predictions(predicted_labels):
     whether the model predicts both classes or collapses into only one class.
     """
 
+    # Convert incoming data into the internal NumPy representation first so the later
+    # numerical operations are predictable and shape checks remain simple.
     predicted_labels_array = np.asarray(predicted_labels, dtype=np.int64)
 
     if predicted_labels_array.ndim != 1:
@@ -544,6 +627,8 @@ def summarize_predictions(predicted_labels):
 
     unique_labels = np.unique(predicted_labels_array)
 
+    # Guard the function boundary with explicit checks so invalid inputs are rejected
+    # before they can silently corrupt later stages.
     if not set(unique_labels.tolist()).issubset({0, 1}):
         raise ValueError(
             "predicted_labels must contain only 0 and 1. "
@@ -553,6 +638,8 @@ def summarize_predictions(predicted_labels):
     free_count = int(np.sum(predicted_labels_array == 0))
     full_count = int(np.sum(predicted_labels_array == 1))
 
+    # Assemble the standard output dictionary here so downstream modules receive both
+    # the computed values and the metadata needed for traceability.
     summary = {
         "total_count": int(predicted_labels_array.shape[0]),
         "free_count": free_count,
@@ -560,4 +647,6 @@ def summarize_predictions(predicted_labels):
         "labels_present": unique_labels.tolist(),
     }
 
+    # Return the finalized value only after all normalization, accumulation, and
+    # packaging steps have established the expected public output form.
     return summary
