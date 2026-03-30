@@ -37,6 +37,35 @@ This module currently provides:
 # running experiments while this module focuses on making their outputs easy to
 # inspect and report.
 # ---------------------------------------------------------------------------
+#
+# This file is the final reporting boundary of the main experiment pipeline.
+# Earlier modules are responsible for producing experiment_result dictionaries
+# that contain:
+# - nested configuration blocks
+# - evaluation metrics
+# - timing information
+# - optional extra metadata
+#
+# This module answers the next practical question:
+# "How should those results be turned into human-usable output files?"
+#
+# The module therefore has three main jobs:
+# 1. flatten rich nested experiment dictionaries into CSV-friendly row structures
+# 2. define the project's official ranking rule for "best result"
+# 3. save the results in two complementary forms:
+#    - a machine-friendly flat CSV
+#    - a human-friendly text summary
+#
+# The overall information flow here is:
+# experiment_result dictionaries
+#   -> flattened row dictionaries
+#   -> ranked result ordering
+#   -> output files on disk
+#
+# This separation is important because experiment execution and result reporting
+# are different responsibilities. The search/orchestration layer should focus on
+# producing correct results, while this module focuses on making them easy to
+# inspect, compare, and archive.
 
 from pathlib import Path
 import csv
@@ -56,6 +85,14 @@ def ensure_output_directory(output_dir):
     Why this helper exists:
     Saving helpers should not have to repeat directory-creation logic.
     """
+
+    # This small helper normalizes the output-directory handling used throughout
+    # the module.
+    #
+    # All file-saving functions eventually need a valid directory to write into.
+    # Centralizing the conversion to Path plus directory creation here keeps the
+    # later saving functions focused on formatting and writing content instead of
+    # repeatedly handling the same filesystem preparation work.
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -95,6 +132,16 @@ def flatten_nested_dict(data, prefix=""):
     # The CSV writer expects one flat dictionary per row. This helper performs the
     # recursive conversion from nested dict structure to a single-level key-value
     # structure, preserving the original hierarchy by prefixing the keys.
+    #
+    # This matters because experiment results are naturally nested:
+    # - preprocessing_config is a dictionary
+    # - lbp_config is a dictionary
+    # - classifier_config is a dictionary
+    # - confusion_counts is a dictionary
+    #
+    # A CSV row, however, needs simple column/value pairs. Prefixing preserves the
+    # meaning of nested fields after flattening, so values such as "neighbors" or
+    # "C" do not lose the context of which config block they came from.
     if data is None:
         return {}
 
@@ -103,6 +150,10 @@ def flatten_nested_dict(data, prefix=""):
 
     flat_dict = {}
 
+    # Walk through the dictionary one item at a time.
+    # For nested dictionaries, recurse deeper while extending the prefix.
+    # For lists and tuples, convert them to string form because CSV cells store text.
+    # For scalar values, store them directly under the fully prefixed key.
     for key, value in data.items():
         full_key = f"{prefix}_{key}" if prefix else str(key)
 
@@ -140,6 +191,18 @@ def flatten_experiment_result(experiment_result):
     One experiment result is naturally structured, but CSV requires one flat row.
     """
 
+    # This function defines how one full experiment_result dictionary is converted
+    # into one reportable CSV row.
+    #
+    # It preserves the most important structure in three stages:
+    # 1. flatten the known nested config / metric blocks under explicit prefixes
+    # 2. copy the standard scalar fields that are especially useful for sorting and
+    #    comparison
+    # 3. keep any other extra fields in a reasonable CSV-friendly form instead of
+    #    silently discarding them
+    #
+    # In other words, this is the module's main "rich result -> flat row" rule.
+
     if not isinstance(experiment_result, dict):
         raise TypeError("experiment_result must be a dictionary.")
 
@@ -148,9 +211,14 @@ def flatten_experiment_result(experiment_result):
     # -------------------------------------------------------------------------
     # 1. flatten known config blocks
     # -------------------------------------------------------------------------
-    # The known nested blocks are flattened first under explicit prefixes so the CSV
-    # column names clearly show which configuration group or metric group each value
-    # came from.
+    # These are the standard nested structures that the rest of the project is
+    # expected to produce. Flattening them first under well-chosen prefixes creates
+    # readable and traceable CSV columns such as:
+    # - preprocessing_target_size
+    # - lbp_neighbors
+    # - classifier_C
+    # - evaluation_occupied_label
+    # - confusion_tp
     flat_result.update(
         flatten_nested_dict(
             experiment_result.get("preprocessing_config"),
@@ -191,6 +259,9 @@ def flatten_experiment_result(experiment_result):
     # -------------------------------------------------------------------------
     # These are the scalar fields that are expected to be useful for direct sorting,
     # filtering, and reporting in the output CSV.
+    #
+    # They are copied explicitly because they are especially important summary values
+    # that callers and readers are likely to care about directly.
     common_scalar_keys = [
         "accuracy",
         "num_samples",
@@ -215,6 +286,10 @@ def flatten_experiment_result(experiment_result):
     # This last pass keeps the flattener flexible. If the experiment result contains
     # extra fields beyond the expected standard ones, they are still preserved in a
     # reasonable CSV-friendly form instead of being silently dropped.
+    #
+    # This is useful because experiment_result dictionaries may evolve over time.
+    # The flattener should be permissive enough to preserve extra information when it
+    # can be represented sensibly.
     reserved_keys = {
         "preprocessing_config",
         "lbp_config",
@@ -253,6 +328,12 @@ def flatten_experiment_results(experiment_results):
     Saving multiple results to CSV is simpler after a batch flattening step.
     """
 
+    # This is the batch version of flatten_experiment_result(...).
+    # It converts a whole result collection into a list of CSV-ready row
+    # dictionaries while preserving experiment order.
+    #
+    # The returned flat_results list is what later CSV-writing logic expects.
+
     if not isinstance(experiment_results, list):
         raise TypeError("experiment_results must be a list.")
 
@@ -284,6 +365,19 @@ def rank_experiment_results(experiment_results):
     In this assignment, higher accuracy is the main criterion. When accuracies
     tie, faster total processing is preferred.
     """
+
+    # This function defines the project's official meaning of "best result".
+    # That definition is reused across:
+    # - experiment_search.py when producing ranked_results
+    # - save_experiment_summary_text(...) when presenting top-ranked experiments
+    # - main.py when printing the best overall result
+    #
+    # The ranking rule is:
+    # 1. higher accuracy is always better
+    # 2. if accuracy ties, lower total runtime is better
+    # 3. if both still tie, larger evaluated sample count is preferred
+    #
+    # Encoding this in one place guarantees that ranking is consistent everywhere.
 
     if not isinstance(experiment_results, list):
         raise TypeError("experiment_results must be a list.")
@@ -321,6 +415,16 @@ def save_experiment_results_csv(experiment_results, csv_path):
     - later reporting
     """
 
+    # This is the machine-friendly persistence path of the module.
+    # It takes structured experiment results, flattens them into row dictionaries,
+    # computes the union of all available columns, and writes everything into a CSV
+    # file that can later be inspected, sorted, filtered, or reloaded.
+    #
+    # The CSV output is especially useful because:
+    # - experiment rows can be compared directly
+    # - configurations and metrics are easy to scan
+    # - inspect_best_config.py can later reconstruct the best configuration from it
+
     csv_path = Path(csv_path)
     csv_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -328,6 +432,8 @@ def save_experiment_results_csv(experiment_results, csv_path):
 
     if not flat_results:
         # still create an empty file with no rows
+        # This keeps the output behavior predictable even if the caller provides an
+        # empty result list.
         with open(csv_path, "w", encoding="utf-8", newline="") as f:
             f.write("")
         return csv_path
@@ -335,6 +441,8 @@ def save_experiment_results_csv(experiment_results, csv_path):
     # collect union of all keys across all rows
     # Because different experiment results may contain slightly different fields, the
     # CSV header is built from the union of all keys appearing in all flattened rows.
+    #
+    # Sorting the field names gives the CSV a stable deterministic column order.
     fieldnames = sorted(
         {
             key
@@ -351,6 +459,7 @@ def save_experiment_results_csv(experiment_results, csv_path):
         )
         writer.writeheader()
 
+        # Write one flat experiment row at a time.
         for flat_result in flat_results:
             writer.writerow(flat_result)
 
@@ -370,6 +479,9 @@ def _format_config_for_summary(config):
 
     # The text summary is meant for quick reading, so config dictionaries are rendered
     # as compact one-line JSON-like strings rather than as multi-line structures.
+    #
+    # This helper keeps that formatting rule centralized so the summary-writing code
+    # remains readable and consistent.
     if config is None:
         return "{}"
 
@@ -400,6 +512,16 @@ def save_experiment_summary_text(
     for reports or quick inspection of the best configurations.
     """
 
+    # This is the human-friendly reporting path of the module.
+    # Unlike the CSV writer, which aims for structured completeness, this function
+    # aims for quick readability. It produces a ranked plain-text report that:
+    # - states the ranking rule
+    # - highlights the best overall result
+    # - lists the top-k ranked experiment summaries
+    #
+    # The text summary is useful when someone wants a concise report without opening
+    # a spreadsheet or reconstructing meaning from raw CSV columns.
+
     if not isinstance(top_k, int):
         raise TypeError("top_k must be an integer.")
 
@@ -409,6 +531,8 @@ def save_experiment_summary_text(
     summary_path = Path(summary_path)
     summary_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # Always rank the provided results before summarizing them so the text summary
+    # consistently reflects the project's official ranking rule.
     ranked_results = rank_experiment_results(experiment_results)
 
     lines = []
@@ -419,6 +543,8 @@ def save_experiment_summary_text(
     lines.append("")
 
     if not ranked_results:
+        # Even in the empty-results case, still produce a small informative summary
+        # file instead of failing or producing nothing.
         lines.append("No experiment results available.")
         with open(summary_path, "w", encoding="utf-8") as f:
             f.write("\n".join(lines))
@@ -429,6 +555,8 @@ def save_experiment_summary_text(
     best_result = ranked_results[0]
     best_confusion = best_result.get("confusion_counts", {})
 
+    # Start with a dedicated best-result block so the most important outcome is
+    # immediately visible without scanning the whole ranking list.
     lines.append("Best result:")
     lines.append(f"  accuracy: {best_result.get('accuracy', '<missing>')}")
     lines.append(f"  num_samples: {best_result.get('num_samples', '<missing>')}")
@@ -460,6 +588,8 @@ def save_experiment_summary_text(
     lines.append("-" * 80)
 
     # The loop below produces one compact human-readable block per ranked result.
+    # Each block contains the main metrics plus the three configuration groups that
+    # define that experiment.
     for rank_index, result in enumerate(ranked_results[:top_k], start=1):
         confusion = result.get("confusion_counts", {})
 
@@ -524,22 +654,34 @@ def save_experiment_outputs(
     saves them together and returns the produced paths in one package.
     """
 
+    # This wrapper is the main external entry point of the module.
+    # It coordinates the two standard reporting outputs expected by the rest of the
+    # project:
+    # - CSV file for structured inspection and later reloading
+    # - text summary file for quick human-readable reporting
+    #
+    # Returning all produced paths in one dictionary keeps the caller-side API
+    # compact and makes main.py simpler.
+
     output_dir = ensure_output_directory(output_dir)
 
     csv_path = output_dir / csv_filename
     summary_path = output_dir / summary_filename
 
+    # Save the machine-friendly flat table first.
     save_experiment_results_csv(
         experiment_results=experiment_results,
         csv_path=csv_path,
     )
 
+    # Save the human-friendly ranked summary next.
     save_experiment_summary_text(
         experiment_results=experiment_results,
         summary_path=summary_path,
         top_k=top_k,
     )
 
+    # Package the produced output paths in one standard return structure.
     saved_outputs = {
         "output_dir": output_dir,
         "csv_path": csv_path,

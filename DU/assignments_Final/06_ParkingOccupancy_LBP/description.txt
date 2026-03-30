@@ -1,0 +1,344 @@
+inspect_best_config.py
+
+Overall purpose of the module
+This module is a post-search inspection utility built for the phase after the main experiment search has already finished and the experiment results have already been saved. Its job is not to search for better configurations or to evaluate the whole configuration grid again. Instead, it takes the already best-ranked configuration from the saved CSV results, reconstructs its original parameter dictionaries, reruns that exact pipeline on one selected test image, evaluates the outcome for that image, and saves a collection of human-readable outputs that make the winning configuration understandable.
+
+In the overall project, this module answers the question:
+“What exactly does the best configuration do on one real test image, and what intermediate outputs does it produce?”
+
+So this module is about interpretability, inspection, and traceability. It gives a detailed, image-level view of the winning pipeline by rebuilding the same processing steps that were used during the main experiment run:
+- load training data
+- load parking map
+- load test images
+- choose one test image
+- prepare training features
+- train classifier
+- extract ROIs from the selected test image
+- prepare test features
+- predict labels and optional scores
+- evaluate predictions against the matching ground truth file
+- save visual and textual inspection outputs
+
+Internal structure of the module
+The module is organized into three main logical layers.
+
+1. CSV reconstruction helpers
+These functions rebuild configuration dictionaries from the flattened CSV output saved by the experiment-results module.
+They exist because the ranked experiment CSV stores everything in flat column form, while the pipeline itself expects nested dictionaries.
+
+2. Inspection-output helpers
+These functions create outputs specifically meant for human inspection, such as LBP visualizations and a per-space evaluation report.
+
+3. Main inspection workflow
+This is the orchestration layer that reloads the winning setup, reruns it on one selected test image, evaluates it, saves the inspection artifacts, and returns one structured inspection-result dictionary.
+
+Purpose of each function
+
+parse_flat_value(value)
+This function converts one CSV cell value back into a Python value when possible. It exists because the CSV output stores all values as text. For inspection purposes, the pipeline needs to reconstruct values such as integers, floats, tuples, and booleans in their original form.
+
+Its logic is:
+- if the value is None, return None
+- if the value is not a string, return it unchanged
+- trim whitespace
+- if the trimmed string is empty, return an empty string
+- try to interpret the text as a Python literal using ast.literal_eval(...)
+- if that fails, keep the original text string
+
+This means that values like "8", "1.0", "(4, 4)", or "True" can become real Python values again, while plain text such as "uniform" remains a string.
+
+parse_prefixed_config_from_row(row, prefix)
+This function extracts one config dictionary from a flattened CSV row. It exists because one CSV row contains many different flattened blocks mixed together:
+- preprocessing_...
+- lbp_...
+- classifier_...
+- evaluation_...
+and possibly other metric fields.
+
+Its job is to:
+- take a full CSV row as a dictionary
+- keep only keys that begin with the requested prefix plus underscore
+- strip that prefix away
+- parse the stored string values back into Python values using parse_flat_value(...)
+
+For example, when prefix="lbp", this function reconstructs the original LBP configuration dictionary from fields such as:
+- lbp_neighbors
+- lbp_radius
+- lbp_method
+- lbp_grid_shape
+
+load_best_result_row(csv_path)
+This function loads the first data row from the ranked experiment CSV. Its purpose is to recover the winning configuration from the saved results file.
+
+Its logic is simple but important:
+- ensure the CSV file exists
+- read all rows using csv.DictReader
+- ensure the CSV actually contains data rows
+- return the first row
+
+This works because the results CSV is already saved in ranked order, so the first row is the best-ranked experiment.
+
+select_test_case(test_cases, test_case_name=None)
+This function chooses which test image should be used for inspection.
+
+Its purpose is to make the inspection workflow flexible:
+- if no test-case name is provided, use the first test image
+- if a name is provided, find the matching test-case record by name
+- fail clearly if the requested name does not exist
+
+This means the module can be used either for quick default inspection or for targeted inspection of a specific test image.
+
+convert_lbp_image_to_visualization(lbp_image)
+This function converts an LBP-coded image into an 8-bit visualization suitable for saving.
+
+Its purpose is purely visual. LBP images contain descriptor codes, not ordinary human-readable brightness values. So this function rescales the numeric range of the LBP image into the interval 0-255.
+
+Its logic is:
+- convert the LBP image to float
+- find minimum and maximum value
+- if all values are equal, return an all-zero uint8 image
+- otherwise linearly rescale the values to 0-255
+- return the result as uint8
+
+This does not change the actual descriptor used for classification. It only makes the LBP-coded image viewable for debugging and inspection.
+
+save_lbp_visualizations(feature_records, output_dir)
+This function saves one LBP visualization per feature record.
+
+Its purpose is to produce one human-viewable image file per parking space, showing the LBP-coded representation of that space. It is similar in spirit to the generic image-patch saving functions in the debug module, but it adds the LBP-specific conversion step first.
+
+Its logic is:
+- create the output directory
+- return an empty list if there are no feature records
+- determine how many digits should be used in the filenames
+- for each record:
+  - verify that "space_index" exists
+  - verify that "lbp_image" exists
+  - convert the lbp_image into a visualizable grayscale image
+  - save it as space_XX.jpg
+  - collect the saved path
+- return the list of saved paths
+
+save_evaluated_records_report(evaluated_records, report_path)
+This function writes a readable text report describing the evaluation result of each parking space in the selected test image.
+
+Its purpose is to give a compact textual summary of what happened per space, including:
+- space index
+- predicted label
+- ground-truth label
+- evaluation outcome (tp / tn / fp / fn)
+- optional predicted score
+
+Its logic is:
+- create the parent output directory
+- start a list of report lines with a title
+- for each evaluated record:
+  - read the important fields
+  - build one readable line summarizing the result
+  - include predicted_score if available
+- write all lines to the output text file
+- return the report path
+
+This report is useful when visually comparing ROI images, processed images, and LBP outputs against the actual evaluation result.
+
+inspect_best_configuration(...)
+This is the main orchestration function of the module. It is the central workflow that rebuilds and reruns the winning configuration.
+
+Its overall purpose is to:
+- recover the winning experiment setup from the saved ranked CSV
+- rerun that exact configuration on one selected test image
+- evaluate the result
+- save inspection artifacts
+- return everything in one structured dictionary
+
+Its internal structure is divided into five logical parts.
+
+Part 1: Load best-ranked row and reconstruct configs
+This part:
+- loads the first row from the ranked CSV
+- reconstructs preprocessing_config
+- reconstructs lbp_config
+- reconstructs classifier_config
+- reconstructs evaluation_config
+- applies a default evaluation_config if the CSV row does not contain one
+
+This step recreates the configuration exactly as the main experiment pipeline used it.
+
+Part 2: Load shared inputs
+This part loads the same shared project inputs that the experiment pipeline uses:
+- training records
+- parking map
+- list of test cases
+- selected test case
+
+The important idea is that inspection should use the same real project inputs, not simplified substitutes.
+
+Part 3: Prepare training data and train classifier
+This part mirrors the training side of the main pipeline:
+- convert training records into training feature records
+- build X_train, y_train, and training metadata
+- train the classifier using the reconstructed classifier_config
+
+So the inspection rerun is not just replaying saved outputs. It retrains the winning model from scratch using the real data and configs.
+
+Part 4: Prepare selected test image and predict
+This part mirrors the test-image path of the main pipeline:
+- extract all parking-space ROIs from the selected test image
+- preprocess them and compute test feature records
+- build X_test and test metadata
+- predict labels
+- predict optional scores
+- build structured prediction records
+- evaluate them against the matching ground-truth txt file
+
+This is the exact scene-to-prediction flow of the winning configuration, but limited to one image.
+
+Part 5: Save visual outputs
+This part creates the inspection artifacts:
+- overlay image of the parking map on the original test image
+- raw ROI patches
+- processed patches
+- LBP visualizations
+- text report of evaluated records
+
+It then packages everything into an inspection_result dictionary that contains:
+- the original best CSV row
+- reconstructed config dictionaries
+- selected test-case name
+- image_evaluation result
+- saved output paths
+- metadata counts
+
+This makes the inspection pipeline reusable from code, because the caller gets both the logical outputs and the artifact locations.
+
+main()
+This is the standalone script entry point.
+
+Its purpose is to provide a ready-to-run default inspection workflow. It:
+- defines the standard project-relative paths
+- points to the ranked results CSV from the main run
+- points to the data directories
+- points to the standard inspection output directory
+- runs inspect_best_configuration(...)
+- prints a concise terminal summary of the selected image, accuracy, counts, and saved paths
+
+So it plays the same role for the inspection branch that main.py plays for the experiment-search branch.
+
+Summary of the whole module
+inspect_best_config.py is a dedicated inspection workflow for the already best-ranked configuration. It does not compare configurations. Instead, it reconstructs the winning setup from saved results, reruns it on one selected test image, evaluates it, saves multiple human-readable outputs, and returns a structured summary. Its main value is that it makes the final chosen pipeline transparent and understandable at the level of individual parking spaces and intermediate image representations.
+
+
+debug_utils.py
+
+Overall purpose of the module
+This module provides helper utilities for visual debugging and for saving intermediate image outputs from the pipeline. It is intentionally separate from the main processing logic so that the recognition pipeline remains clean and focused on loading, preprocessing, feature extraction, classification, and evaluation.
+
+Its purpose is not to change results, improve accuracy, or participate in the classifier logic. Instead, it supports interpretation and development by turning existing in-memory images into saved inspection artifacts.
+
+In the context of the whole project, this module mainly answers the question:
+“How can the internal geometric and image-processing outputs of the pipeline be inspected visually by a human?”
+
+The module currently provides support for two main types of inspection:
+1. full-scene visualization:
+   showing the parking-space map on the original parking-lot image
+2. per-space image export:
+   saving one chosen image representation from each structured record
+
+Internal structure of the module
+This module is small and intentionally simple. Its internal structure has three layers.
+
+1. Full-image visualization helper
+This part creates one overlay image that helps connect the parking map to the full parking-lot scene.
+
+2. Generic image-saving helper
+This part saves one given image to disk with safe directory handling and explicit failure reporting.
+
+3. Generic record-based patch saver
+This part saves one selected image representation from each record in a collection, using the shared space-index-based naming convention.
+
+Purpose of each function
+
+draw_parking_map(image, parking_map)
+This function draws all parking-space quadrilaterals on a copy of the original parking-lot image.
+
+Its purpose is to create a human-readable scene-level visualization that makes it possible to verify:
+- whether the parking-space map aligns correctly with the image
+- whether the numbering of spaces is correct
+- how later extracted ROI patches relate back to the original scene
+
+Its logic is:
+- copy the original image so the input is not modified
+- iterate through the parking-space polygons in order
+- convert each polygon to integer coordinates
+- draw the polygon boundary in green
+- place the 1-based parking-space index in red near the first polygon point
+- return the annotated image
+
+The order of iteration is important because the displayed numbers correspond to the same parking-space order used later in ROI extraction, prediction, and evaluation.
+
+This function is especially useful in the inspection workflow because it provides the highest-level spatial context: it shows the full scene together with the project’s geometric interpretation of that scene.
+
+save_overlay_image(image, output_path)
+This function saves one image to disk, specifically intended for debug-overlay outputs.
+
+Its purpose is to provide a small safe wrapper around cv2.imwrite(...). It keeps file-saving behavior consistent and avoids repeating the same path-handling logic elsewhere.
+
+Its logic is:
+- convert the destination path into a Path object
+- create the parent directory if necessary
+- save the image using OpenCV
+- raise a clear error if saving fails
+
+This helper is small, but useful because it guarantees that the inspection code can save overlay outputs reliably without cluttering the main inspection workflow.
+
+save_processed_patches(records, output_dir, image_key)
+This function saves one selected image representation from each record in a list of structured records.
+
+Its purpose is to provide one generic saver instead of many almost identical functions such as:
+- save_roi_patches(...)
+- save_grayscale_patches(...)
+- save_processed_patches(...)
+- save_other_intermediate_images(...)
+
+The key design idea is that many project stages store images under different record keys:
+- ROI extraction uses "roi_image"
+- preprocessing may provide "grayscale_image"
+- preprocessing also provides "processed_image"
+- later stages could provide other image-based entries
+
+So instead of writing a separate saver for each one, this function takes image_key as a parameter and uses it to select which image from each record should be written.
+
+Its logic is:
+- normalize and create the output directory
+- if the input list is empty, return an empty list
+- determine the number of digits to use in filenames
+- initialize a list of saved paths
+- for each record:
+  - verify that "space_index" exists
+  - verify that the requested image_key exists
+  - verify that the image under that key is not None
+  - build a filename of the form space_XX.jpg
+  - save the image with cv2.imwrite(...)
+  - raise a clear error if saving fails
+  - append the output path to the result list
+- return the list of saved paths
+
+The naming convention is important because it preserves alignment with the parking-space numbering used everywhere else in the project. That means saved files such as space_01.jpg or space_12.jpg can be directly matched to:
+- parking-space indices in the overlay image
+- ROI records
+- prediction records
+- evaluation records
+
+Logical role of the whole module
+This module exists entirely for human inspection and debugging support. It converts already existing project structures into visible artifacts without affecting the main recognition logic.
+
+Its two central ideas are:
+1. preserve scene-level context
+   via draw_parking_map(...)
+2. preserve record-level image traceability
+   via save_processed_patches(...)
+
+Because of this design, the module remains small, generic, and reusable. It helps interpret the behavior of the system while keeping the main pipeline code uncluttered.
+
+Summary of the whole module
+debug_utils.py is a lightweight helper module for visual debugging and artifact saving. It does not participate in the classifier pipeline itself. Instead, it provides scene-level and record-level image export tools that make the internal outputs of the project easier to inspect, verify, and explain.

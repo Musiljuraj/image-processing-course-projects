@@ -1,0 +1,294 @@
+PROJECT OVERVIEW
+
+This project is a small two-module image-classification pipeline built around one very specific task: deciding whether an input image should be classified as "red" or "green". The overall design is intentionally simple and split into two clearly separated responsibilities.
+
+The first module, classifier.py, contains the actual image-analysis logic. Its purpose is to inspect image content, isolate red and green regions, and reduce that visual information to a final class prediction. This module is the decision engine of the project.
+
+The second module, main.py, acts as the execution and evaluation layer around that engine. Its purpose is to load input images from a test folder, send them through the classifier, infer the expected class from the filename, collect performance statistics, save outputs grouped by predicted class, and print a final summary. This module does not define the classification method itself. Instead, it coordinates the whole run and measures how well the classifier performs on the dataset.
+
+Taken together, the project follows a very clean top-down structure:
+
+1. main.py controls the workflow.
+2. classifier.py performs the image understanding.
+3. main.py receives the classifier result and evaluates it.
+
+This separation makes the project easy to understand because the orchestration logic and the image-processing logic are not mixed together.
+
+
+MODULE 1: classifier.py
+
+GENERAL PURPOSE
+
+classifier.py is the core algorithm module. It contains the image-processing and decision-making logic used by the whole project. Its job is to transform a raw image into a pair of interpretable intermediate masks and then convert those masks into a final "red" or "green" prediction.
+
+Conceptually, this module is built as a two-stage classifier:
+
+- Stage 1: detect red-like and green-like regions in the image
+- Stage 2: compare the detected amounts of red and green and choose the dominant one
+
+This means the classification is not based on abstract features or machine learning. It is a direct rule-based classifier built around color segmentation.
+
+INTERNAL STRUCTURE
+
+The module has two functions:
+
+1. build_color_masks(img)
+2. predict_color(red_mask, green_mask)
+
+These two functions are tightly connected. The first creates the intermediate representation, and the second interprets it.
+
+FUNCTION: build_color_masks(img)
+
+Purpose:
+This function performs the segmentation stage of the classifier. It takes a loaded color image and produces two binary masks:
+- one showing where red pixels were detected
+- one showing where green pixels were detected
+
+These masks are the most important internal data representation in the whole project. The later prediction step does not operate on the original image directly. It operates on these masks.
+
+Internal logical parts of build_color_masks(img):
+
+A. Input smoothing
+The function starts by applying a small Gaussian blur to the image. The purpose of this step is to reduce small noisy variations in color and intensity before thresholding. Without this smoothing, isolated noisy pixels could create unstable mask fragments and distort the later pixel counts.
+
+This is a preparation step. It does not try to change image meaning. It only makes the later color selection more robust.
+
+B. Color-space conversion
+After smoothing, the image is converted from OpenCV's default BGR format into HSV format.
+
+This is a key structural choice in the classifier. HSV is better suited for color-based thresholding because it separates hue from brightness and saturation. Since the whole project is fundamentally about telling apart red and green, HSV makes the logic much easier to express using threshold ranges.
+
+C. Red-mask construction
+The function then creates a mask for red pixels.
+
+This part is slightly special because red wraps around the HSV hue scale. That means red cannot be represented as one single continuous hue interval in this setup. Instead, the function creates two separate threshold ranges:
+- one near the low end of the hue scale
+- one near the high end of the hue scale
+
+These two masks are then merged into one final red mask. This is an important detail in the classifier structure because it shows that the project is aware of the circular nature of hue representation.
+
+D. Green-mask construction
+Next, the function creates a green mask using one continuous HSV threshold range.
+
+Unlike red, green fits naturally into one contiguous hue interval here, so only one threshold operation is needed. The result is a binary mask where green-like pixels are marked and everything else is suppressed.
+
+E. Morphological cleanup
+After thresholding, the function applies morphology to both masks.
+
+This is a mask-cleaning stage. Thresholding alone often produces:
+- tiny isolated blobs
+- small holes
+- fragmented edges
+- noise caused by lighting or color variation
+
+To reduce these effects, the function applies opening and closing using a small elliptical structuring element.
+
+Opening removes tiny noise fragments.
+Closing reconnects and fills small gaps in meaningful regions.
+
+This stage is important because the next function makes its decision by counting nonzero pixels. If the masks are noisy, the counts become less meaningful. Morphology improves the quality of the intermediate representation before the final decision is made.
+
+F. Development-time masked visualizations
+The function also creates red_only and green_only images using the masks. These are not returned and are not part of the active prediction logic. Their purpose is documentary and practical: they preserve a useful debugging aid from development, allowing manual visual inspection of what each mask is capturing.
+
+So even though they do not affect the output, they represent an important part of the module's structure: the code was built in a way that supports visual interpretation of the segmentation result.
+
+G. Output of the function
+Finally, the function returns the cleaned red and green masks.
+
+These masks are not the final prediction yet. They are the structured intermediate output passed directly into predict_color().
+
+FUNCTION: predict_color(red_mask, green_mask)
+
+Purpose:
+This function performs the decision stage of the classifier. It receives the two masks built by build_color_masks() and turns them into a single class label.
+
+Its logic is intentionally simple and transparent: count the number of detected red pixels, count the number of detected green pixels, and choose the class with the larger count.
+
+Internal logical parts of predict_color(red_mask, green_mask):
+
+A. Red-pixel counting
+The function counts how many nonzero pixels exist in the red mask. Since the mask is binary, this count represents the size of the detected red region.
+
+B. Green-pixel counting
+The same counting process is applied to the green mask, giving the size of the detected green region.
+
+C. Dominance comparison
+The function then compares the two counts.
+
+If red_pixels is greater than green_pixels, the image is classified as "red".
+Otherwise, it is classified as "green".
+
+This means the classifier uses area dominance as its final decision rule. The predicted color is simply the color whose mask covers more of the image.
+
+An additional structural detail is that ties fall into the green case, because only a strictly greater red count produces a red prediction.
+
+D. Output of the function
+The function returns three values:
+- the final predicted class
+- the red pixel count
+- the green pixel count
+
+The prediction is used by main.py for evaluation and output grouping.
+The counts provide transparency and debugging value because they show the numeric basis of the decision.
+
+
+MODULE 2: main.py
+
+GENERAL PURPOSE
+
+main.py is the control, execution, and evaluation module of the project. Its role is to run the classifier on a whole dataset and measure its behavior.
+
+This module does not define how red/green classification works internally. Instead, it handles everything around the classification logic:
+- input folder handling
+- image iteration
+- expected-label inference
+- evaluation bookkeeping
+- confusion matrix construction
+- output saving
+- summary printing
+
+It is the module that turns the core classifier from a single-image decision routine into a complete end-to-end experiment.
+
+INTERNAL STRUCTURE
+
+The structure of main.py can be understood as one linear pipeline with several logical phases:
+
+1. imports and setup
+2. dataset and output folder preparation
+3. metric initialization
+4. image-processing loop
+5. final metric computation and reporting
+
+LOGICAL PART: imports and classifier connection
+
+The module imports:
+- os for filesystem interaction
+- cv2 for image loading and saving
+- build_color_masks and predict_color from classifier.py
+
+This immediately shows the module relationship:
+main.py depends on classifier.py and uses its two functions as the central classification pipeline.
+
+LOGICAL PART: input dataset setup
+
+The script defines the test image folder and reads all filenames from it. The filenames are sorted so the processing order is deterministic.
+
+This part establishes the dataset to be evaluated and ensures reproducible traversal order.
+
+LOGICAL PART: output folder preparation
+
+The script defines two output folders:
+- out-red
+- out-green
+
+It creates them if they do not already exist.
+
+These folders are not used for evaluation math. Their purpose is practical inspection. After the run, they contain copies of the original images grouped by what the classifier predicted. This makes it easy to manually inspect classifier behavior in a very concrete way.
+
+LOGICAL PART: metric initialization
+
+The script initializes:
+- total
+- correct
+- wrong
+
+and also:
+- tp
+- fn
+- fp
+- tn
+
+The first group tracks coarse overall performance.
+The second group tracks the confusion matrix.
+
+This is a very important structural choice. The script is not satisfied with only saying how many predictions were correct. It also records the direction of mistakes, which makes evaluation more informative.
+
+LOGICAL PART: image-processing loop
+
+This is the main body of the module and the operational center of the whole project.
+
+For each file, the script goes through several internal sub-steps:
+
+A. Extension filtering
+Only .png, .jpg, and .jpeg files are processed. This prevents accidental handling of unrelated files.
+
+B. Image loading
+The full path is built and the image is read from disk.
+
+C. Classifier execution
+The loaded image is passed into build_color_masks(), and the resulting masks are passed into predict_color().
+
+This is where the module connects directly to classifier.py. The actual image understanding happens there, but main.py controls when and how it is invoked.
+
+D. Ground-truth extraction from filename
+The script determines the expected class by checking whether the filename starts with "red" or "green".
+
+This is the labeling convention of the dataset. It means the filename itself contains the truth label, so no separate annotation file is needed.
+
+If the filename does not follow this convention, the image is skipped. This keeps evaluation clean by excluding unlabeled or ambiguous files.
+
+E. Total-sample update
+Once a file is recognized as a valid labeled sample, total is increased.
+
+F. Correct/wrong decision
+The script compares prediction with expected class and updates correct or wrong accordingly.
+
+This creates a simple binary evaluation result for the current image.
+
+G. Confusion-matrix update
+The script then updates tp, fn, fp, or tn depending on the combination of truth and prediction.
+
+This is a more detailed bookkeeping layer than correct/wrong. It preserves exactly what kind of success or failure occurred.
+
+H. Output path selection by predicted class
+The script chooses whether to place the current image in out-red or out-green based on the prediction.
+
+This is an important design detail: output grouping reflects the classifier's decision, not the ground truth. Because of that, manual inspection of these folders shows how the classifier actually partitioned the dataset.
+
+I. Image saving
+The original image is saved into the chosen output folder.
+
+The script does not alter the image contents. It only copies the file into a result location that reflects the classifier outcome.
+
+J. Optional debugging tools
+The loop contains commented-out print statements and image-display calls.
+
+These form a built-in inspection layer:
+- the prints expose expected class, predicted class, result, and pixel counts
+- the window displays would allow visual inspection of original image and masks
+
+Even though they are disabled, they show that the module was designed to support both automated evaluation and manual debugging.
+
+LOGICAL PART: final accuracy calculation
+
+After all valid images have been processed, the script computes accuracy from the confusion matrix.
+
+This turns the detailed counts into one final aggregate performance number.
+
+LOGICAL PART: final report printing
+
+The module prints:
+- total image count
+- correct prediction count
+- wrong prediction count
+- confusion matrix
+- final accuracy percentage
+
+This final section completes the role of main.py as an evaluation wrapper around the classifier.
+
+OVERALL RELATIONSHIP BETWEEN THE TWO MODULES
+
+The most important structural fact in the entire project is the division of responsibility:
+
+classifier.py answers:
+"How is one image classified?"
+
+main.py answers:
+"How is the classifier run on a dataset, evaluated, and inspected?"
+
+So classifier.py contains the method, while main.py contains the workflow around the method.
+
+Together, they form a simple but coherent architecture:
+- classifier.py provides the reusable classification logic
+- main.py provides the experimental and reporting framework that uses that logic

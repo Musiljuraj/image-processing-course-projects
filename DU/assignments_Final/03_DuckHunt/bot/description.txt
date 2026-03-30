@@ -1,0 +1,115 @@
+MATCHER.PY
+
+Overall purpose
+matcher.py is the detection core of the whole project. Its job is to compare the current prepared frame against all loaded templates and all configured template scales, evaluate how well each combination matches, and return one final best result. In the overall pipeline, this module sits between the visual inputs and the decision logic: preprocessing.py gives it the current frame in the correct representation, templates.py gives it the in-memory template objects, and controller.py uses its output to decide whether to update motion history, where to click, and whether the click should actually happen.
+
+The module is designed around one central question: “What is the strongest valid detection in the current frame?” It does not decide whether the bot should click, whether prediction should be used, or whether a score is good enough for action. Those decisions belong to controller.py. matcher.py only finds the best candidate and describes it in a structured way.
+
+Internal structure
+The module has three layers.
+
+The first layer is the MatchResult dataclass. This is the structured output format of the matching process. It stores everything that the rest of the project needs to know about the winning detection: which template won, what its score was, where the matched rectangle starts and ends, what the center of that rectangle is, what scale produced the result, and what the actual scaled width and height were. This makes the matching result easy to pass around as one coherent object instead of many separate loose values.
+
+The second layer is made of small helper functions. These helpers isolate technical details so that the main matching loop stays readable.
+
+The helper _is_sqdiff_method(method) exists because OpenCV template matching methods do not all interpret score maps in the same direction. Some methods treat smaller values as better matches, while others treat larger values as better matches. This helper tells the module whether the currently selected method belongs to the SQDIFF family, so that the later logic can interpret the score map correctly and unify all methods into the same “higher score is better” model.
+
+The helper _resize_template_for_scale(template, scale) is the module’s template-scaling utility. Its purpose is to take one already-loaded template and one configured scale and turn that into the concrete scaled image that will be used for one matching attempt. It also computes the scaled width and height and returns them together with the scaled image. If the given scale is invalid or collapses the template to an unusable size, the function returns None so that the calling logic can simply skip that case. This helper also chooses the interpolation method based on whether the template is being shrunk or enlarged, and it avoids unnecessary work by reusing the original template image when the scaled size is effectively unchanged.
+
+The third and most important layer is the TemplateMatcher class. This is the actual matching engine used by the controller. Its constructor stores the selected OpenCV matching method and cleans the configured scales so that only positive scales are kept. If no valid scales remain, it falls back to 1.0 so that matching can still proceed safely.
+
+Purpose of each function and logical part
+
+1. MatchResult dataclass
+This is the module’s output container. Its role is to represent one final chosen detection in a way that is easy for other modules to consume. The controller reads the score for threshold decisions, the center for default clicking, the rectangle for debug rendering, the template name for logs, and the scale and matched size for reporting and diagnostics. The purpose of this class is to turn the raw result of template matching into a stable, well-defined project-level object.
+
+2. _is_sqdiff_method(method)
+This function exists only to classify the selected OpenCV matching method. Its purpose is to support unified score handling later in the matching loop. Without this distinction, the module would not know whether to use min_loc or max_loc from the score map or how to interpret the score itself. So even though it is small, it is an important compatibility helper between OpenCV’s method-specific behavior and the project’s unified “best match” logic.
+
+3. _resize_template_for_scale(template, scale)
+This function handles the scaling step for one template at one scale. Internally, it has several logical parts:
+- It first validates the scale and rejects non-positive values.
+- It computes the scaled width and height by applying the scale to the template’s original dimensions.
+- It rejects any result whose dimensions would become smaller than one pixel.
+- It reuses the original image if scaling does not actually change the template size.
+- Otherwise, it resizes the image using an interpolation strategy chosen according to whether the image is being reduced or enlarged.
+Its purpose is to prepare one concrete scaled template for one concrete matching attempt.
+
+4. TemplateMatcher.__init__(method, scales)
+The constructor prepares the matching engine for runtime use. Its purpose is not to perform matching yet, but to store the selected matching method and sanitize the configured scales into a consistent internal form. This means the actual match_best(...) method can focus only on searching, not on re-validating the configuration every iteration.
+
+5. TemplateMatcher.match_best(frame, templates)
+This is the core function of the entire module. Its purpose is to search across all template/scale combinations and return the single strongest result. Internally, it is organized into several logical stages:
+- It starts by assuming that no best result exists yet.
+- It reads the frame dimensions once so that impossible template sizes can be skipped efficiently.
+- It loops over every loaded template.
+- For each template, it loops over every configured scale.
+- It asks _resize_template_for_scale(...) to build the scaled template for that attempt.
+- It skips any invalid or oversized scaled template.
+- It runs cv2.matchTemplate(...) to produce the score map for the current frame/template/scale combination.
+- It extracts the min/max values and their locations from that score map.
+- It interprets the result according to the matching method: for SQDIFF methods it takes the minimum location and converts the score into a higher-is-better form, while for the other methods it takes the maximum location directly.
+- It computes the matched rectangle from the winning top-left corner and the scaled template size.
+- It computes the center of that rectangle.
+- It wraps all those values into a MatchResult object.
+- It compares that result against the best result found so far and keeps the stronger one.
+After all combinations have been tested, it returns the strongest overall result, or None if no valid match attempt was possible.
+
+Why the module matters in the overall system
+matcher.py is the place where the visual search actually happens. Without it, the bot would have raw frames and loaded templates but no way to compare them. It converts image data into a structured detection result that the rest of the system can reason about. In practical terms, it is the bridge between “what the bot sees” and “what the bot does next.”
+
+
+
+DEBUG_VIEW.PY
+
+Overall purpose
+debug_view.py is the visual explanation module of the project. Its job is not to influence detection, clicking, or prediction decisions, but to make those decisions visible and understandable by drawing them onto an image. The module takes the original frame and overlays the most important runtime information: the best detected match, the detected center, the chosen click point, the recent motion history, and compact metadata describing the current detection state.
+
+In the overall system, this module is part of the optional debug path. controller.py calls it only when debug-frame saving is enabled. That means it is a diagnostic tool, not part of the core action loop. Its purpose is to turn internal state into a human-readable visual record so that the behavior of the bot can be inspected after the fact.
+
+Internal structure
+This module is intentionally compact. It has one main function, draw_match(...), and that one function contains all the visual annotation logic. The design keeps the module simple: it receives all the information it needs from the controller, draws it in a consistent way, and returns the annotated image.
+
+Because the module has just one function, its internal structure is organized as sequential logical blocks rather than multiple helper functions. Each block adds one part of the explanation layer to the output image.
+
+Purpose of the function and each logical part
+
+1. draw_match(frame_bgr, match, threshold, click_point=None, history_points=None, prediction_used=False)
+This is the single public function of the module. Its purpose is to build a debug image that visually explains the current detection and click context. It receives the raw frame, the current best match if one exists, the decision threshold, the final chosen click point, the optional recent motion history, and a flag telling whether prediction changed the click point. From these pieces it produces one annotated image.
+
+The function can be understood as a sequence of logical stages.
+
+First logical part: create the annotation canvas
+The function starts by copying the original BGR frame. The purpose of this step is to ensure that the original input image remains unchanged while the function creates a separate working image for drawing. This copy becomes the debug canvas onto which all later overlays are added.
+
+Second logical part: draw the optional motion history
+If history_points are present, the function draws small circles for each stored point and lines connecting consecutive points. The purpose of this part is to visualize the recent sequence of trusted detected centers that the prediction subsystem used. This makes the short motion history visible in the debug output and helps explain why prediction may or may not have been used.
+
+Third logical part: handle the no-match case
+If match is None, there is no rectangle, no detected center, and no meaningful match metadata to draw. Instead of returning a blank frame, the function writes a clear “No match result” label onto the image and returns immediately. The purpose of this part is to make the absence of a valid detection explicit and readable rather than silently showing an unannotated image.
+
+Fourth logical part: determine threshold pass/fail state
+If a match exists, the function compares match.score against the provided threshold and determines whether the current best detection passes the same threshold that controller.py uses for click eligibility. It then chooses a box color based on that result: green if the threshold is passed, orange if a match exists but is still below the action threshold. The purpose of this part is to visually distinguish “strong enough” detections from merely “present” detections.
+
+Fifth logical part: draw the matched rectangle and detected center
+The function draws the match rectangle using the selected threshold-status color and draws a small red circle at the match center. The purpose of this part is to show exactly where the winning template was found in the frame and what the baseline direct-click point would be if prediction were not used.
+
+Sixth logical part: draw the click point
+If click_point is not None, the function draws a marker at that point. This is important because the actual click point may differ from the detected center when prediction is enabled and safe to use. The purpose of this part is to make the difference between “detected object center” and “actual chosen aim point” directly visible.
+
+Seventh logical part: build the explanatory text lines
+The function then builds four text strings:
+- one for template name and score,
+- one for winning scale and scaled matched size,
+- one for center and threshold-pass status,
+- one for click point and whether prediction was used.
+The purpose of this part is to summarize the same information that exists structurally inside MatchResult and the controller state, but in a compact human-readable form directly on the image.
+
+Eighth logical part: render the text overlays
+The function places those text lines onto the debug image. The first three lines use the rectangle color so that threshold pass/fail remains visually consistent across shape overlays and text. The final line uses a magenta-style color aligned with the click marker, because it describes the click-point decision rather than the match rectangle itself. The purpose of this part is to turn the debug image into a self-explanatory artifact that can be read without separately checking logs.
+
+Final logical part: return the annotated image
+After all overlays have been drawn, the function returns the completed canvas. The purpose of this final step is to hand back a fully annotated image to the controller, which may then add one more status line and save the file to disk.
+
+Why the module matters in the overall system
+debug_view.py does not change what the bot does, but it changes how understandable the bot is. It provides a direct visual explanation of detection geometry, threshold status, click choice, and motion history. This makes it much easier to inspect whether the matcher found the right target, whether the score was high enough, whether prediction changed the click point, and how the recent tracked movement looked. In other words, this module is the project’s main observability tool for understanding and validating runtime behavior.
