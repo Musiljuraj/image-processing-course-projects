@@ -15,37 +15,37 @@ LBP classifier config: {'classifier_name': 'knn', 'n_neighbors': 3}
 LBP training sample count: 84898
 LBP feature count: 40
 LBP training class counts: {'close': 41946, 'open': 42952}
-LBP model build time [ms]: 179609.302
+LBP model build time [ms]: 169826.558
 
 === Evaluation summary ===
 Predicted labels:      533
 Ground-truth labels:   533
 Compared labels:       533
 
-Correct predictions:   355
-Accuracy [%]:          66.60
+Correct predictions:   361
+Accuracy [%]:          67.73
 
 Confusion-style counts:
-  open  -> open:       214
-  open  -> close:      25
-  close -> open:       153
-  close -> close:      141
+  open  -> open:       210
+  open  -> close:      29
+  close -> open:       143
+  close -> close:      151
   other:               0
 
 Localization timing [ms]:
   measured frames:     533
-  mean:                35.013
-  min:                 17.354
-  max:                 87.705
+  mean:                37.802
+  min:                 20.351
+  max:                 95.161
 
 Classification timing [ms]:
   measured frames:     533
-  mean:                10.142
-  min:                 0.021
-  max:                 35.345
+  mean:                10.665
+  min:                 0.015
+  max:                 32.256
 
 Total frame-processing timing [ms]:
   measured frames:     533
-  mean:                45.512
-  min:                 17.651
-  max:                 103.677
+  mean:                48.856
+  min:                 20.894
+  max:                 107.309

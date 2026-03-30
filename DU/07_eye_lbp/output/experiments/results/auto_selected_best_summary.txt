@@ -3,11 +3,11 @@
 --- Best experiment selected from search ---
 === Best experiment summary ===
 Experiment index:                     3
-Accuracy [%]:                         84.17
+Accuracy [%]:                         83.33
 Compared frames:                      120
-Correct predictions:                  101
-Total frame mean [ms]:                53.200
-Classification mean [ms]:             19.707
+Correct predictions:                  100
+Total frame mean [ms]:                46.919
+Classification mean [ms]:             16.217
 
 Preprocessing config:                 {'grayscale': True, 'target_size': (80, 40), 'crop_analysis_band': True, 'analysis_top_ratio': 0.15, 'analysis_bottom_ratio': 0.85, 'contrast_method': 'equalize', 'clahe_clip_limit': 2.0, 'clahe_tile_grid_size': (8, 8), 'filter_name': 'gaussian', 'gaussian_kernel_size': (5, 5), 'median_blur_size': 5}
 LBP config:                           {'neighbors': 8, 'radius': 2.0, 'method': 'uniform', 'grid_shape': (2, 2), 'normalize_histogram': True}
@@ -17,14 +17,14 @@ Classifier config:                    {'classifier_name': 'knn', 'n_neighbors': 
 Run name:                               auto_selected_best_run
 Run log path:                           /home/musiljuraj/3rls/ZAO/DU/07_eye_lbp/output/logs/run_log_auto_selected_best.txt
 Evaluation report path:                 /home/musiljuraj/3rls/ZAO/DU/07_eye_lbp/output/reports/evaluation_report_auto_selected_best.txt
-Model build time [ms]:                  179609.302
+Model build time [ms]:                  169826.558
 Frame count processed:                  533
 Frame results stored:                   533
 
 --- Final full rerun evaluation ---
 Compared labels:                        533
-Correct predictions:                    355
-Accuracy [%]:                           66.60
-Localization mean [ms]:                 35.013
-Classification mean [ms]:               10.142
-Total frame mean [ms]:                  45.512
+Correct predictions:                    361
+Accuracy [%]:                           67.73
+Localization mean [ms]:                 37.802
+Classification mean [ms]:               10.665
+Total frame mean [ms]:                  48.856

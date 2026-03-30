@@ -1,0 +1,2709 @@
+DETAILED DESCRIPTION OF THE PURPOSE, INTERNAL STRUCTURE, FUNCTIONS, AND LOGICAL PARTS
+OF THE WHOLE PROJECT
+
+======================================================================
+0) OVERALL PROJECT ARCHITECTURE
+======================================================================
+
+This project is a complete eye-state recognition pipeline built around two
+connected ideas:
+
+1. A classical computer-vision localization branch:
+   - detect faces in video frames,
+   - select one main face,
+   - detect eyes and mouth inside that face.
+
+2. A runtime eye-state classification branch:
+   - originally heuristic, based on thresholding / blob analysis / circles,
+   - later replaced by an LBP-based learned classifier,
+   - while still keeping the heuristic classifier as a compatible fallback.
+
+The project also includes a full training and experiment-search side:
+- load the mrlEyes training dataset,
+- preprocess eye images,
+- compute LBP feature descriptors,
+- train a classifier,
+- compare multiple configurations,
+- choose the best configuration,
+- run a final full video pass with that chosen setup,
+- evaluate against ground truth,
+- save reports.
+
+So the full project can be understood as a layered pipeline:
+
+raw training dataset
+    -> structured training records
+    -> shared preprocessing
+    -> LBP feature extraction
+    -> classifier training
+    -> reusable runtime model bundle
+
+real input video
+    -> frame-by-frame face detection
+    -> one selected main face
+    -> eye localization
+    -> frame-level eye-state classification
+    -> stored frame results
+    -> evaluation against ground truth
+
+And above that, there is one orchestration layer:
+
+experiment search
+    -> rank results
+    -> select best configuration
+    -> run final pipeline
+    -> save final summary outputs
+
+The modules are arranged so each one owns one clear responsibility. This is the
+main structural strength of the project. The code is not one large monolithic
+script. Instead, it is split into modules that correspond to natural logical
+stages of the system.
+
+The modules are:
+
+1. auto_select_and_run.py
+2. experiment_search.py
+3. eye_training_io.py
+4. eye_preprocessing.py
+5. eye_lbp_dataset.py
+6. lbp_features.py
+7. eye_lbp_classifier.py
+8. eye_state_lbp.py
+9. eye_state.py
+10. detectors.py
+11. main.py
+12. evaluation.py
+
+What follows is a detailed explanation of each of them.
+
+======================================================================
+1) MODULE: auto_select_and_run.py
+======================================================================
+
+OVERALL PURPOSE
+
+This module is the top-level automatic orchestration layer of the whole final
+solution.
+
+It does not implement any low-level computer-vision or machine-learning logic
+itself. Instead, it coordinates already existing lower layers into one fully
+automatic workflow:
+
+experiment search
+    -> best-result selection
+    -> conversion of the winning experiment into runtime configs
+    -> one final full rerun using those configs
+    -> saving of final summary files
+
+So its real purpose is:
+“Turn the whole project into one push-button final solution.”
+
+It is the module that makes the project feel complete, because it connects:
+- comparison of configurations,
+- automatic model/setting selection,
+- final execution of the best solution.
+
+----------------------------------------------------------------------
+INTERNAL STRUCTURE
+----------------------------------------------------------------------
+
+The module is small and very focused. Its structure is:
+
+A. imports
+B. automatic final-run configuration constants
+C. output helper functions
+D. full automatic orchestration function
+E. thin main() entry point
+
+This structure is intentionally minimal because the module is supposed to be
+only the final controller, not another algorithm-heavy layer.
+
+----------------------------------------------------------------------
+A. IMPORTS
+----------------------------------------------------------------------
+
+The module imports:
+- Path for output-path handling,
+- several helpers from experiment_search.py,
+- run_final_pipeline from main.py.
+
+This already reveals the logic of the module:
+- experiment_search.py handles comparison and ranking,
+- main.py handles actual execution of the final runtime pipeline,
+- auto_select_and_run.py only connects the two.
+
+----------------------------------------------------------------------
+B. AUTOMATIC FINAL-RUN CONFIGURATION
+----------------------------------------------------------------------
+
+The constants at the top define how the top-level automatic workflow behaves.
+
+Their purpose is to centralize policy decisions such as:
+- how many frames should be used in the search,
+- how many training records per class should be used in experiment search,
+- whether preview should be shown,
+- how the final automatic run should be named,
+- what filename prefix should be used for outputs.
+
+This part exists so the orchestration logic below stays readable.
+Instead of hard-coded literals inside the workflow, the workflow reads clearly
+from named constants.
+
+----------------------------------------------------------------------
+C. OUTPUT HELPER FUNCTIONS
+----------------------------------------------------------------------
+
+1. _get_auto_selection_output_paths(paths)
+
+Purpose:
+- extend the standard experiment-search output-path set with one additional
+  path used only by the top-level orchestration layer.
+
+Why it exists:
+- experiment_search.py already knows the standard experiment report paths,
+- but auto_select_and_run.py needs one extra summary file that links:
+  - the winning experiment,
+  - and the final rerun produced from that winner.
+
+So this function is a small adapter between:
+- experiment-level output naming,
+- and top-level orchestration output naming.
+
+2. _save_auto_selection_summary(best_experiment_result, final_run_result, summary_path)
+
+Purpose:
+- create one plain-text summary that explicitly connects:
+  - the best experiment found during search,
+  - the actual full final rerun executed using that chosen configuration.
+
+Why it exists:
+- without this helper, the user would have to inspect multiple output files
+  separately to understand the whole story,
+- with it, there is one human-readable bridge between:
+  - search phase,
+  - and final execution phase.
+
+Logical structure inside it:
+- extract the final evaluation summary from the final run,
+- extract the accuracy/timing substructures,
+- build a list of text lines,
+- create the output directory if necessary,
+- save the summary file.
+
+This is a reporting helper, not a computational helper.
+
+----------------------------------------------------------------------
+D. FULL AUTOMATIC ORCHESTRATION
+----------------------------------------------------------------------
+
+3. auto_select_best_and_run_final()
+
+This is the core function of the module.
+
+Purpose:
+- execute the entire final automatic workflow from experiment search to final
+  rerun.
+
+Its internal steps are:
+
+Step 1:
+Run experiment search with the configured search settings.
+
+Step 2:
+Build output paths for the orchestration layer.
+
+Step 3:
+Save the full experiment-search report.
+
+Step 4:
+Extract the best experiment result.
+
+Step 5:
+Save a short “best experiment” summary.
+
+Step 6:
+Convert the best experiment result into the exact runtime configs required by
+main.py.
+
+Step 7:
+Run the full final pipeline with those chosen configs.
+
+Step 8:
+Save one top-level automatic-selection summary that links:
+- winner from search,
+- final rerun output.
+
+Step 9:
+Return one structured orchestration_result dictionary containing all major
+outputs from every stage.
+
+Why this function exists:
+- it is the final project-level workflow,
+- it makes all lower modules operate as one finished system,
+- it also preserves all important intermediate outputs rather than only
+  printing a final result.
+
+The returned dictionary is important because it keeps the function reusable for:
+- direct script execution,
+- debugging,
+- later extension,
+- tests.
+
+----------------------------------------------------------------------
+E. MAIN ENTRY POINT
+----------------------------------------------------------------------
+
+4. main()
+
+Purpose:
+- provide the default script entry point for the final automatic solution.
+
+Internal logic:
+- call auto_select_best_and_run_final(),
+- extract the most important top-level results,
+- print a compact console summary:
+  - selected experiment index,
+  - selected accuracy,
+  - selected configs,
+  - saved output paths.
+
+Why it exists:
+- gives the project a clean final “run this file” entry point,
+- produces a small final checkpoint for the user.
+
+This function does not do any real orchestration work itself. It only delegates
+to the main orchestration function and prints the final summary.
+
+======================================================================
+2) MODULE: experiment_search.py
+======================================================================
+
+OVERALL PURPOSE
+
+This module is the experiment-comparison layer of the project.
+
+Its purpose is to systematically test multiple preprocessing / LBP /
+classifier combinations on the real video pipeline, evaluate them against the
+ground truth, rank them, and expose the best result in a form reusable by the
+final orchestration layer.
+
+This module exists because by the time the project reached its final stage,
+the building blocks already existed:
+- training-data loading,
+- preprocessing,
+- LBP feature extraction,
+- classifier training,
+- runtime video pipeline,
+- evaluation.
+
+What was still missing was:
+- a controlled way to compare configurations,
+- a ranking policy,
+- a way to identify the winning setup and reuse it.
+
+That is exactly what this module does.
+
+----------------------------------------------------------------------
+INTERNAL STRUCTURE
+----------------------------------------------------------------------
+
+The module is large, but its structure is clean and layered:
+
+A. imports and reused lower-level dependencies
+B. runtime constants reused from the final pipeline
+C. project path helpers
+D. frame-storage helper
+E. configuration helpers
+F. training-record loading helpers
+G. one-model build helper for experiment runs
+H. one-experiment runner
+I. ranking / formatting / report helpers
+J. full search orchestration
+K. standalone quick-run entry point
+
+This structure mirrors the natural life cycle of experiment search.
+
+----------------------------------------------------------------------
+A. IMPORTS
+----------------------------------------------------------------------
+
+The module imports:
+- copy / product / Path / timing / gc,
+- OpenCV and NumPy,
+- localization helpers from detectors.py,
+- training-data helpers from eye_training_io.py,
+- config validators from preprocessing / LBP / classifier modules,
+- matrix-building helpers from eye_lbp_dataset.py,
+- classifier training helper,
+- runtime LBP frame classifier,
+- evaluation helpers.
+
+This import set shows that experiment_search.py is a connector module.
+It is not a low-level algorithm module. It pulls together many lower layers.
+
+----------------------------------------------------------------------
+B. RUNTIME CONFIGURATION REUSED FROM MAIN PIPELINE
+----------------------------------------------------------------------
+
+These constants mirror the behavior of the final pipeline:
+- mouth detection enabled,
+- face-detection downscaling,
+- LBP fallback policy,
+- preview settings,
+- quick-test defaults.
+
+Why this part matters:
+- the experiment phase should evaluate something close to the real final
+  runtime behavior,
+- otherwise the “best” experiment would not necessarily be best for the actual
+  final run.
+
+So these constants keep search-mode runtime aligned with final runtime.
+
+----------------------------------------------------------------------
+C. PROJECT PATH HELPERS
+----------------------------------------------------------------------
+
+1. get_project_paths()
+
+Purpose:
+- build one full dictionary of all project-relevant directories and files.
+
+This includes:
+- input directories,
+- output directories,
+- cascade XML paths,
+- video path,
+- ground-truth path,
+- training-dataset root,
+- experiment-output directories.
+
+Why it exists:
+- lets the experiment runner work standalone from the project root,
+- keeps path construction centralized,
+- mirrors the path logic later reused in main.py.
+
+2. ensure_output_directories(paths)
+
+Purpose:
+- create all directories needed by experiment search.
+
+Why it exists:
+- ensures later report-writing code can assume directories are present.
+
+3. get_experiment_output_paths(paths)
+
+Purpose:
+- return the canonical standard experiment-report paths:
+  - full experiment search report,
+  - best-experiment summary.
+
+Why it exists:
+- centralizes naming of experiment-search text outputs.
+
+4. open_video(video_path)
+
+Purpose:
+- open the target video safely and raise a clear error if it cannot be opened.
+
+5. convert_to_grayscale(frame)
+
+Purpose:
+- convert one BGR runtime frame into the grayscale representation used by the
+  project pipeline.
+
+6. store_frame_result(...)
+
+Purpose:
+- append one structured frame-level result record.
+
+Why it matters:
+- it deliberately mirrors the runtime record structure from main.py,
+- this allows evaluation.py to be reused unchanged for experiment runs.
+
+----------------------------------------------------------------------
+D. CONFIGURATION HELPERS
+----------------------------------------------------------------------
+
+7. ensure_config_list(configs, config_name)
+
+Purpose:
+- validate that an incoming config collection is:
+  - a list,
+  - non-empty,
+  - containing only dictionaries.
+
+Why it exists:
+- experiment generation depends on Cartesian product across clean config lists.
+
+8. get_recommended_experiment_configuration_lists()
+
+Purpose:
+- define the built-in default experiment set.
+
+Design:
+- 1 preprocessing config,
+- 3 LBP configs,
+- 1 classifier config.
+
+Why this exact design:
+- keeps the experiment space small,
+- satisfies the assignment idea of comparing multiple LBP configurations,
+- avoids a combinatorial explosion.
+
+9. build_experiment_configurations(...)
+
+Purpose:
+- build the full Cartesian product of all supplied config lists.
+
+Return:
+- explicit per-experiment configuration dictionaries containing:
+  - experiment_index,
+  - preprocessing_config,
+  - lbp_config,
+  - classifier_config.
+
+Why it exists:
+- converts independent config axes into concrete runnable experiment bundles.
+
+----------------------------------------------------------------------
+E. TRAINING-RECORD LOADING HELPERS
+----------------------------------------------------------------------
+
+10. _validate_max_training_records_per_class(...)
+
+Purpose:
+- validate the optional balanced-subset limit.
+
+This allows search mode to run on:
+- full dataset,
+- or limited balanced subsets for quicker tests.
+
+11. load_training_records_for_experiments(...)
+
+Purpose:
+- load training records in a way suitable for experiment search.
+
+Two modes:
+- full-dataset mode,
+- balanced-subset mode.
+
+Why the subset mode exists:
+- repeated experiments are expensive,
+- loading a balanced subset directly from disk reduces memory use and speeds
+  up search.
+
+Internal logic in subset mode:
+- collect image paths,
+- parse filenames,
+- keep separate counts for closed/open classes,
+- build records only until both classes reach the requested cap,
+- enforce presence of both classes.
+
+This function is important because it reduces repeated overhead during
+multi-configuration search.
+
+----------------------------------------------------------------------
+F. MODEL-BUILDING HELPER FOR ONE EXPERIMENT
+----------------------------------------------------------------------
+
+12. build_eye_lbp_model_from_training_records(...)
+
+Purpose:
+- build one trained model bundle from already loaded training records.
+
+Why it exists:
+- experiment search should not reload the dataset from disk for every
+  experiment,
+- instead, one shared pool of training records is reused,
+- only preprocessing / LBP / classifier training are repeated per config.
+
+Internal stages:
+- validate configs,
+- prepare training feature records,
+- build X_train, y_train, metadata,
+- train classifier,
+- compute model/training statistics,
+- return a lean model bundle,
+- explicitly delete bulky intermediates.
+
+Important design difference from the full startup model bundle:
+- this experiment version does not keep all bulky training structures alive,
+- that keeps experiment memory usage lower.
+
+----------------------------------------------------------------------
+G. ONE-EXPERIMENT RUNNER
+----------------------------------------------------------------------
+
+13. run_one_experiment(...)
+
+Purpose:
+- execute one full end-to-end experiment on the real video.
+
+This is the core experimental unit of the module.
+
+Its internal flow is:
+
+1. validate inputs,
+2. build one model for the current config,
+3. open the video,
+4. initialize per-run state,
+5. optionally create preview window,
+6. loop over frames:
+   - grayscale conversion,
+   - face detection,
+   - main-face selection,
+   - face-parts detection,
+   - LBP frame classification,
+   - timing measurements,
+   - result storage,
+   - temporal-state updates,
+   - optional preview handling,
+7. release resources,
+8. evaluate frame results against ground truth,
+9. build one structured experiment_result dictionary,
+10. clean up memory,
+11. return the experiment result.
+
+Why this function matters:
+- it is the bridge between:
+  - configuration definition,
+  - and measurable experiment outcome.
+
+This is where one abstract experiment configuration becomes actual accuracy,
+timing, and frame-level prediction results.
+
+----------------------------------------------------------------------
+H. RANKING / FORMATTING / REPORT HELPERS
+----------------------------------------------------------------------
+
+14. rank_experiment_results(experiment_results)
+
+Purpose:
+- sort finished experiments from best to worst.
+
+Ranking policy:
+1. higher accuracy,
+2. lower total frame mean time,
+3. lower classification mean time,
+4. lower model-build time.
+
+Why this exists:
+- makes the “best” result explicit and deterministic.
+
+15. get_best_experiment_result(search_result)
+
+Purpose:
+- return the best-ranked experiment result from a completed search bundle.
+
+Why it exists:
+- provides a clear semantic helper instead of forcing callers to read
+  ranked_results[0] directly.
+
+16. extract_runtime_configs_from_experiment_result(experiment_result)
+
+Purpose:
+- turn one experiment result back into the exact three runtime config
+  dictionaries needed by main.py.
+
+This is the key handoff from:
+- search result
+to
+- final runtime execution.
+
+17. format_one_experiment_result(experiment_result, rank_index=None)
+
+Purpose:
+- convert one experiment result into readable multiline text.
+
+It includes:
+- outcome quality,
+- timing,
+- training/model statistics,
+- configs,
+- full evaluation summary.
+
+18. format_experiment_search_summary(search_result)
+
+Purpose:
+- format the whole ranked search result into one report text.
+
+19. format_best_experiment_summary(experiment_result)
+
+Purpose:
+- create a shorter winner-only summary.
+
+20. save_experiment_search_report(search_result, report_path)
+
+Purpose:
+- save the full formatted ranked report.
+
+21. save_best_experiment_report(experiment_result, report_path)
+
+Purpose:
+- save the shorter best-only summary.
+
+Together, these formatting/report helpers form the text-reporting interface of
+the experiment layer.
+
+----------------------------------------------------------------------
+I. FULL SEARCH ORCHESTRATION
+----------------------------------------------------------------------
+
+22. run_experiment_search(...)
+
+Purpose:
+- run the full multi-configuration experiment search.
+
+This is the main public orchestration function of the module.
+
+Its internal logic is:
+
+1. build paths and output directories,
+2. validate subset limit,
+3. fill in missing config lists from recommended defaults,
+4. build explicit experiment configurations,
+5. load training records once,
+6. load detector cascades once,
+7. run run_one_experiment(...) for each configuration,
+8. attach experiment indices,
+9. rank results,
+10. return one structured search_result bundle.
+
+Why it matters:
+- it turns the whole experiment-search logic into one callable workflow,
+- it keeps expensive shared inputs reused across experiments,
+- it is the function called by auto_select_and_run.py.
+
+----------------------------------------------------------------------
+J. STANDALONE QUICK TEST MODE
+----------------------------------------------------------------------
+
+23. main()
+
+Purpose:
+- run a default quick experiment search.
+
+It uses:
+- recommended 3 experiments,
+- limited training subset,
+- limited frame count,
+- no preview.
+
+Why this exists:
+- convenient smoke-test mode,
+- allows quick manual inspection of search behavior without launching a full
+  final automatic workflow.
+
+======================================================================
+3) MODULE: eye_training_io.py
+======================================================================
+
+OVERALL PURPOSE
+
+This module is the training-data ingestion layer.
+
+Its job is to transform the raw extracted mrlEyes dataset on disk into a list
+of structured training records that later modules can use consistently.
+
+It handles:
+- finding supported image files,
+- parsing the metadata encoded in filenames,
+- loading images,
+- creating structured records containing:
+  - file/path information,
+  - parsed dataset metadata,
+  - normalized label,
+  - optional image array.
+
+So it is the bridge between:
+raw dataset directory
+and
+structured in-memory training samples.
+
+----------------------------------------------------------------------
+INTERNAL STRUCTURE
+----------------------------------------------------------------------
+
+A. dataset format constants
+B. internal path/parsing helpers
+C. dataset file-discovery helper
+D. filename parsing helper
+E. image-loading helper
+F. record-construction helpers
+G. whole-dataset loader
+H. dataset summary helpers
+I. standalone smoke-test block
+
+----------------------------------------------------------------------
+A. DATASET FORMAT CONSTANTS
+----------------------------------------------------------------------
+
+SUPPORTED_IMAGE_EXTENSIONS
+
+Purpose:
+- define which file types count as training images.
+
+EYE_STATE_LABELS
+
+Purpose:
+- define the canonical mapping:
+  - 0 -> close
+  - 1 -> open
+
+Why these constants matter:
+- they encode the project’s assumptions about the training dataset format.
+
+----------------------------------------------------------------------
+B. INTERNAL PATH / PARSING HELPERS
+----------------------------------------------------------------------
+
+1. _ensure_dataset_root(dataset_root)
+
+Purpose:
+- normalize dataset_root to Path form,
+- ensure it exists and is a directory.
+
+Why it exists:
+- fail early and clearly if the training dataset is unavailable.
+
+2. _is_supported_image_file(file_path)
+
+Purpose:
+- decide if a path is a real image file the dataset loader should accept.
+
+3. _natural_sort_key(value)
+
+Purpose:
+- create a natural sorting key so file order is stable and human-readable.
+
+Why this matters:
+- deterministic dataset traversal,
+- more readable summaries/debugging.
+
+4. _parse_int_field(raw_value, field_name, file_name)
+
+Purpose:
+- parse one integer field from the dataset filename,
+- raise descriptive errors when parsing fails.
+
+5. _normalize_eye_state_label(label_value)
+
+Purpose:
+- convert numeric dataset eye-state label into the canonical textual class name.
+
+Why it exists:
+- later modules and reports use “close” / “open” terminology consistently.
+
+----------------------------------------------------------------------
+C. DATASET DISCOVERY
+----------------------------------------------------------------------
+
+6. collect_eye_image_paths(dataset_root, recursive=True)
+
+Purpose:
+- scan the dataset directory and return all supported image paths in natural
+  sorted order.
+
+Why it exists:
+- isolates filesystem traversal from later record-building logic.
+
+----------------------------------------------------------------------
+D. FILENAME PARSING
+----------------------------------------------------------------------
+
+7. parse_eye_filename(file_name)
+
+Purpose:
+- parse one mrlEyes filename into structured metadata.
+
+Fields parsed:
+- subject_id
+- image_id
+- gender
+- glasses
+- eye_state
+- reflections
+- lighting
+- sensor_id
+- label
+- class_name
+
+Why it matters:
+- the filename is the source of training labels and metadata,
+- this function turns that encoded filename convention into a structured form.
+
+----------------------------------------------------------------------
+E. IMAGE LOADING
+----------------------------------------------------------------------
+
+8. load_one_eye_training_image(image_path, grayscale=True)
+
+Purpose:
+- load one dataset eye image from disk.
+
+Why it exists:
+- centralizes image-read policy,
+- supports grayscale or color loading,
+- raises clear errors on failure.
+
+----------------------------------------------------------------------
+F. RECORD CONSTRUCTION
+----------------------------------------------------------------------
+
+9. build_one_eye_training_record(image_path, dataset_root=None, load_image=True, grayscale=True)
+
+Purpose:
+- convert one dataset image path into one full structured training record.
+
+The record contains:
+- file path info,
+- relative path,
+- filename,
+- subject directory,
+- parsed metadata,
+- numeric label,
+- class name,
+- optional image array,
+- optional image shape.
+
+Why it matters:
+- this record structure is the main training-side sample format used later by
+  preprocessing and feature-extraction layers.
+
+----------------------------------------------------------------------
+G. WHOLE-DATASET LOADING
+----------------------------------------------------------------------
+
+10. load_all_eye_training_records(...)
+
+Purpose:
+- load all dataset records into a list.
+
+Features:
+- optional image loading,
+- optional recursive scan,
+- optional ignoring of malformed files.
+
+Why it exists:
+- gives the project one standard entry point for training-data loading.
+
+----------------------------------------------------------------------
+H. SUMMARY HELPERS
+----------------------------------------------------------------------
+
+11. summarize_eye_training_records(records)
+
+Purpose:
+- compute a compact summary of the loaded dataset.
+
+Includes:
+- total count,
+- class counts,
+- subject count,
+- samples per subject,
+- image-shape counts.
+
+12. format_eye_training_summary(summary)
+
+Purpose:
+- convert the summary into readable text.
+
+13. print_eye_training_summary(summary)
+
+Purpose:
+- convenience wrapper to print the formatted summary.
+
+These helpers are mainly for smoke tests and quick inspection.
+
+----------------------------------------------------------------------
+I. STANDALONE SMOKE TEST
+----------------------------------------------------------------------
+
+The __main__ block:
+- loads the default dataset,
+- prints the summary,
+- prints the first record example.
+
+Why it exists:
+- lets the loader be tested independently before later pipeline stages are used.
+
+======================================================================
+4) MODULE: eye_preprocessing.py
+======================================================================
+
+OVERALL PURPOSE
+
+This module is the shared eye-image normalization layer.
+
+Its purpose is to take raw eye images or runtime eye ROIs and convert them into
+a stable standardized image representation before LBP feature extraction.
+
+It is shared by:
+- training-side images,
+- runtime eye ROIs.
+
+That shared use is critical because the classifier should see the same type of
+input during training and during runtime inference.
+
+The preprocessing pipeline is:
+
+raw image
+    -> grayscale conversion
+    -> fixed-size resize
+    -> optional central-band crop
+    -> optional contrast normalization
+    -> optional light filtering
+
+----------------------------------------------------------------------
+INTERNAL STRUCTURE
+----------------------------------------------------------------------
+
+A. default preprocessing constants
+B. low-level validation helpers
+C. public configuration helpers
+D. image-level preprocessing helpers
+E. end-to-end single-image preprocessing
+F. record-level wrappers
+G. preprocessing summary helpers
+
+----------------------------------------------------------------------
+A. DEFAULT CONFIGURATION CONSTANTS
+----------------------------------------------------------------------
+
+These constants define:
+- default target size,
+- default crop band,
+- default contrast method and CLAHE settings,
+- default filter name and kernel sizes.
+
+Why they exist:
+- centralize preprocessing policy,
+- keep later logic readable,
+- keep training/runtime preprocessing aligned.
+
+----------------------------------------------------------------------
+B. VALIDATION HELPERS
+----------------------------------------------------------------------
+
+1. _is_grayscale_image(image)
+- checks whether the image is already single-channel grayscale.
+
+2. _validate_target_size(target_size)
+- validates (width, height) size tuples.
+
+3. _validate_ratio(value, name)
+- validates ratio values in [0, 1].
+
+4. _validate_analysis_band(top_ratio, bottom_ratio)
+- validates the crop interval used for the vertical analysis band.
+
+5. _validate_odd_kernel_size(kernel_size, name)
+- validates odd 2D kernel sizes.
+
+6. _validate_odd_integer(value, name)
+- validates positive odd scalar kernel size.
+
+These helpers exist so later preprocessing code can assume valid inputs.
+
+----------------------------------------------------------------------
+C. PUBLIC CONFIGURATION HELPERS
+----------------------------------------------------------------------
+
+7. get_default_preprocessing_config()
+
+Purpose:
+- return a fresh default preprocessing config dictionary.
+
+8. validate_preprocessing_config(preprocessing_config=None)
+
+Purpose:
+- merge caller config with defaults,
+- validate and normalize the complete config.
+
+Why it matters:
+- all later preprocessing functions rely on this stable normalized config
+  structure.
+
+----------------------------------------------------------------------
+D. IMAGE-LEVEL HELPERS
+----------------------------------------------------------------------
+
+9. convert_eye_to_grayscale(image)
+- supports grayscale, BGR, and BGRA input,
+- converts everything to grayscale.
+
+10. resize_eye(gray_image, target_size)
+- resize one grayscale eye image to the standard fixed size.
+
+11. crop_eye_analysis_band(gray_image, analysis_top_ratio, analysis_bottom_ratio)
+- keep only the central vertical band of the eye.
+
+12. normalize_eye_contrast(...)
+- apply:
+  - none,
+  - histogram equalization,
+  - CLAHE.
+
+13. filter_eye_image(...)
+- apply:
+  - none,
+  - Gaussian blur,
+  - median blur.
+
+Together these functions are the building blocks of the shared preprocessing
+pipeline.
+
+----------------------------------------------------------------------
+E. END-TO-END IMAGE PREPROCESSING
+----------------------------------------------------------------------
+
+14. preprocess_one_eye_image(image, preprocessing_config=None)
+
+Purpose:
+- run the whole preprocessing chain on one input eye image.
+
+Internal stages:
+- validate config,
+- grayscale conversion,
+- resize,
+- optional crop,
+- contrast normalization,
+- filtering.
+
+This is the core image-level pipeline function of the module.
+
+15. preprocess_runtime_eye_roi(eye_roi, preprocessing_config=None)
+
+Purpose:
+- thin semantic wrapper for runtime eye ROIs.
+
+Why it exists:
+- makes runtime call sites read clearly without duplicating logic.
+
+----------------------------------------------------------------------
+F. RECORD-LEVEL WRAPPERS
+----------------------------------------------------------------------
+
+16. preprocess_one_eye_record(record, preprocessing_config=None, image_key="image")
+
+Purpose:
+- preprocess one structured record,
+- return an enriched copy containing:
+  - preprocessed_image
+  - preprocessed_image_shape
+  - preprocessing_config
+
+17. preprocess_all_eye_records(records, preprocessing_config=None, image_key="image")
+
+Purpose:
+- preprocess a whole list of structured records.
+
+Why these exist:
+- training-side pipeline works with record lists, not just bare images.
+
+----------------------------------------------------------------------
+G. SUMMARY HELPERS
+----------------------------------------------------------------------
+
+18. summarize_preprocessed_eye_records(records)
+- count preprocessed images and their resulting shapes.
+
+19. format_preprocessed_eye_summary(summary)
+- turn summary into readable text.
+
+20. print_preprocessed_eye_summary(summary)
+- print wrapper.
+
+These are inspection/debugging helpers.
+
+======================================================================
+5) MODULE: eye_lbp_dataset.py
+======================================================================
+
+OVERALL PURPOSE
+
+This module is the bridge between image-oriented sample records and
+classifier-oriented numeric data.
+
+It connects:
+- structured eye records,
+- preprocessing,
+- LBP extraction,
+- feature matrices,
+- label vectors,
+- aligned metadata lists.
+
+It supports both:
+- training side,
+- runtime side.
+
+So it is the exact transition layer where the project moves from:
+“records that contain images”
+to
+“records and matrices that contain numeric descriptors”.
+
+----------------------------------------------------------------------
+INTERNAL STRUCTURE
+----------------------------------------------------------------------
+
+A. imports of preprocessing and LBP layers
+B. record-to-feature pipeline helpers
+C. runtime feature-record helpers
+D. matrix and label construction helpers
+E. convenience wrappers
+F. summary helper
+
+----------------------------------------------------------------------
+A. RECORD-TO-FEATURE PIPELINE HELPERS
+----------------------------------------------------------------------
+
+1. prepare_feature_records_from_eye_records(...)
+
+Purpose:
+- generic pipeline:
+  eye records
+    -> preprocess all records
+    -> extract LBP features from preprocessed records
+    -> return enriched feature records
+
+This is the general record-list conversion entry point.
+
+2. prepare_training_feature_records(...)
+
+Purpose:
+- training-specific semantic wrapper around the generic helper.
+
+Why it exists:
+- makes training code read clearly and consistently.
+
+----------------------------------------------------------------------
+B. RUNTIME HELPERS
+----------------------------------------------------------------------
+
+3. prepare_runtime_feature_record(...)
+
+Purpose:
+- convert one runtime eye ROI into one runtime LBP feature record.
+
+The record contains:
+- metadata,
+- preprocessed image,
+- preprocessed shape,
+- preprocessing config,
+- lbp image,
+- lbp feature vector,
+- histogram bin count,
+- feature length,
+- lbp config.
+
+Why it matters:
+- runtime prediction often starts from one detected eye ROI, not from a full
+  dataset record.
+
+4. prepare_runtime_feature_records(...)
+
+Purpose:
+- batch version of the single-runtime-feature-record helper.
+
+Why it exists:
+- makes it easy to process multiple detected eye ROIs consistently.
+
+----------------------------------------------------------------------
+C. MATRIX / LABEL / METADATA CONSTRUCTION
+----------------------------------------------------------------------
+
+5. build_feature_matrix(feature_records)
+
+Purpose:
+- extract all lbp_feature_vector fields and stack them into a 2D matrix X.
+
+Why it matters:
+- classifier layer expects matrices, not record lists.
+
+6. build_label_vector(feature_records)
+
+Purpose:
+- extract numeric labels into a 1D vector y.
+
+Why it matters:
+- supervised training needs a clean target vector aligned with X.
+
+7. build_metadata_list(feature_records)
+
+Purpose:
+- extract lightweight aligned metadata from feature records.
+
+Why it exists:
+- later stages often need to map rows of X back to original samples.
+
+8. build_training_matrix_and_labels(training_feature_records)
+
+Purpose:
+- standard wrapper returning:
+  - X_train
+  - y_train
+  - metadata_list
+
+9. build_runtime_matrix(runtime_feature_records)
+
+Purpose:
+- standard wrapper returning:
+  - X_runtime
+  - metadata_list
+
+Together these functions form the numeric interface between feature records and
+the classifier layer.
+
+----------------------------------------------------------------------
+D. CONVENIENCE WRAPPERS
+----------------------------------------------------------------------
+
+10. prepare_training_matrix_and_labels(...)
+
+Purpose:
+- full training-side convenience pipeline:
+  training records
+    -> training feature records
+    -> X_train, y_train, metadata_list
+
+Also returns:
+- training_feature_records
+
+Why it exists:
+- lets higher layers do the whole training-data preparation in one call.
+
+11. prepare_runtime_matrix(...)
+
+Purpose:
+- runtime-side convenience pipeline:
+  runtime eye images
+    -> runtime feature records
+    -> X_runtime, runtime_metadata_list
+
+Also returns:
+- runtime_feature_records
+
+Why it exists:
+- simplifies runtime integration.
+
+----------------------------------------------------------------------
+E. SUMMARY HELPER
+----------------------------------------------------------------------
+
+12. summarize_feature_records(feature_records)
+
+Purpose:
+- small structural summary of feature records:
+  - total count,
+  - feature lengths present,
+  - class names present,
+  - labels present,
+  - subject IDs present,
+  - whether labels exist.
+
+This is mainly for quick validation before training or runtime prediction.
+
+======================================================================
+6) MODULE: lbp_features.py
+======================================================================
+
+OVERALL PURPOSE
+
+This module is the descriptor engine of the project.
+
+Its job is to convert one already preprocessed grayscale eye image into an LBP
+feature descriptor that can be used by the classifier.
+
+It performs:
+- LBP parameter validation,
+- circular neighborhood sampling,
+- binary pattern computation,
+- LBP image coding,
+- histogram creation,
+- optional spatial-grid descriptor construction,
+- record enrichment with LBP outputs.
+
+This is the exact point where image representation becomes numeric texture
+representation.
+
+----------------------------------------------------------------------
+INTERNAL STRUCTURE
+----------------------------------------------------------------------
+
+A. LBP configuration constants
+B. configuration helpers
+C. low-level sampling helpers
+D. core LBP image computation
+E. histogram/spatial-descriptor helpers
+F. runtime extraction wrapper
+G. record wrappers
+H. summary helpers
+
+----------------------------------------------------------------------
+A. CONFIGURATION CONSTANTS
+----------------------------------------------------------------------
+
+SUPPORTED_LBP_METHODS
+- supported textual modes: default, uniform
+
+DEFAULT_* constants
+- neighbors
+- radius
+- method
+- grid shape
+- histogram normalization switch
+
+These constants define the default LBP descriptor policy of the project.
+
+----------------------------------------------------------------------
+B. CONFIGURATION HELPERS
+----------------------------------------------------------------------
+
+1. get_default_lbp_config()
+- return default config dict.
+
+2. normalize_lbp_method_name(method)
+- normalize textual method name.
+
+3. validate_lbp_parameters(neighbors, radius, method)
+- validate core LBP parameters.
+
+4. validate_grid_shape(grid_shape)
+- validate descriptor grid partitioning.
+
+5. validate_lbp_config(lbp_config=None)
+- merge with defaults and normalize whole LBP config.
+
+6. get_lbp_histogram_bin_count(neighbors, method)
+- compute how many histogram bins are required.
+
+Why these matter:
+- later descriptor computation depends on one clean and explicit LBP config.
+
+----------------------------------------------------------------------
+C. LOW-LEVEL SAMPLING HELPERS
+----------------------------------------------------------------------
+
+7. _bilinear_sample_gray_image(gray_image, sample_y, sample_x)
+
+Purpose:
+- sample grayscale intensities at floating-point coordinates using bilinear
+  interpolation.
+
+Why it exists:
+- circular LBP neighborhoods do not generally land on integer pixel locations.
+
+8. _compute_binary_neighbor_patterns(gray_image, neighbors, radius)
+
+Purpose:
+- for each circular neighbor, compare sampled neighbor intensity with center
+  intensity and produce one binary pattern plane.
+
+Why it exists:
+- this is the low-level raw material from which final LBP codes are built.
+
+----------------------------------------------------------------------
+D. CORE LBP IMAGE COMPUTATION
+----------------------------------------------------------------------
+
+9. compute_lbp_image(gray_image, neighbors=8, radius=1, method="uniform")
+
+Purpose:
+- build one LBP-coded image.
+
+Two branches:
+- default LBP:
+  build full binary code by bit accumulation.
+- uniform LBP:
+  count transitions, map uniform patterns to count-of-ones, collapse
+  non-uniform ones into one extra bin.
+
+This is the core algorithmic center of the module.
+
+----------------------------------------------------------------------
+E. HISTOGRAM / SPATIAL DESCRIPTOR HELPERS
+----------------------------------------------------------------------
+
+10. compute_lbp_histogram(lbp_image, bin_count, normalize_histogram=True)
+
+Purpose:
+- convert one LBP image into one histogram descriptor.
+
+11. split_image_into_grid_cells(image, grid_shape)
+
+Purpose:
+- split a 2D image into regular grid cells in row-major order.
+
+Why it exists:
+- spatial LBP descriptors preserve rough location information by computing
+  separate histograms for different image regions.
+
+12. compute_spatial_lbp_descriptor(...)
+
+Purpose:
+- full descriptor pipeline:
+  - compute LBP image,
+  - split into grid cells,
+  - compute per-cell histograms,
+  - concatenate them into one final descriptor vector.
+
+This is the main high-level descriptor function of the module.
+
+----------------------------------------------------------------------
+F. RUNTIME WRAPPER
+----------------------------------------------------------------------
+
+13. extract_lbp_features_from_runtime_eye_image(preprocessed_eye_image, lbp_config=None)
+
+Purpose:
+- runtime-oriented helper that starts from one already preprocessed eye image
+  and returns:
+  - lbp image,
+  - lbp feature vector,
+  - histogram bin count,
+  - lbp config.
+
+Why it exists:
+- runtime path already has preprocessed eye ROIs and needs a compact
+  descriptor-extraction helper.
+
+----------------------------------------------------------------------
+G. RECORD WRAPPERS
+----------------------------------------------------------------------
+
+14. extract_lbp_features_from_record(preprocessed_record, lbp_config=None, image_key="preprocessed_image")
+
+Purpose:
+- add LBP outputs to one preprocessed record.
+
+15. extract_lbp_features_from_records(preprocessed_records, lbp_config=None, image_key="preprocessed_image")
+
+Purpose:
+- batch version for a whole list of preprocessed records.
+
+Why they exist:
+- higher layers work with structured records, not just bare arrays.
+
+----------------------------------------------------------------------
+H. SUMMARY HELPERS
+----------------------------------------------------------------------
+
+16. summarize_lbp_feature_records(lbp_feature_records)
+- count feature lengths and histogram bin counts.
+
+17. format_lbp_feature_summary(summary)
+- format summary as readable text.
+
+18. print_lbp_feature_summary(summary)
+- print wrapper.
+
+======================================================================
+7) MODULE: eye_lbp_classifier.py
+======================================================================
+
+OVERALL PURPOSE
+
+This module is the supervised-learning layer.
+
+Its purpose is to:
+- validate classifier configuration,
+- build the chosen classifier object,
+- train it on X_train / y_train,
+- predict labels and optional scores,
+- attach predictions back to structured records,
+- build one reusable startup-trained model bundle.
+
+It is the layer where the project moves from:
+“LBP descriptor”
+to
+“learned eye-state model”.
+
+----------------------------------------------------------------------
+INTERNAL STRUCTURE
+----------------------------------------------------------------------
+
+A. classifier constants and label mapping
+B. config helpers
+C. feature/label validation helpers
+D. training and prediction helpers
+E. structured prediction helpers
+F. startup model-building helper
+G. convenience wrapper
+H. summary helper
+
+----------------------------------------------------------------------
+A. CONSTANTS AND LABEL VOCABULARY
+----------------------------------------------------------------------
+
+SUPPORTED_CLASSIFIER_NAMES
+- currently supports:
+  - knn
+  - linear_svm
+
+EYE_LABEL_TO_CLASS_NAME
+- 0 -> close
+- 1 -> open
+
+These define the project’s classifier vocabulary.
+
+----------------------------------------------------------------------
+B. CONFIG HELPERS
+----------------------------------------------------------------------
+
+1. get_default_classifier_config()
+- returns default classifier config.
+
+2. normalize_classifier_name(classifier_name)
+- normalize textual classifier name.
+
+3. validate_classifier_config(classifier_config=None)
+- validate config for:
+  - knn
+  - linear_svm
+
+4. build_classifier_model(classifier_config=None)
+- construct untrained sklearn model object.
+
+Why these exist:
+- keep classifier selection explicit and safe.
+
+----------------------------------------------------------------------
+C. MATRIX / VECTOR VALIDATION HELPERS
+----------------------------------------------------------------------
+
+5. _validate_feature_matrix(X, matrix_name="X")
+- validate 2D float32 feature matrix.
+
+6. _validate_feature_vector(feature_vector, vector_name="feature_vector")
+- validate 1D feature vector and reshape to single-row matrix.
+
+7. _validate_label_vector(...)
+- validate 1D int64 binary label vector,
+- optionally require both classes.
+
+These helpers exist so training and prediction always begin from clean numeric
+inputs.
+
+----------------------------------------------------------------------
+D. TRAINING AND PREDICTION
+----------------------------------------------------------------------
+
+8. train_classifier(X_train, y_train, classifier_config=None)
+
+Purpose:
+- validate matrix/vector,
+- build classifier,
+- fit model.
+
+9. predict_labels(model, X_test)
+
+Purpose:
+- predict binary class labels for a feature matrix.
+
+10. predict_single_label(model, feature_vector)
+
+Purpose:
+- predict one label for one sample.
+
+11. predict_scores(model, X_test)
+
+Purpose:
+- return confidence-like scores if supported.
+
+Score meaning:
+- probability of class 1 when predict_proba exists,
+- decision value for class 1 when decision_function exists,
+- None otherwise.
+
+12. predict_single_score(model, feature_vector)
+
+Purpose:
+- single-sample score wrapper.
+
+Together these functions form the classifier inference interface.
+
+----------------------------------------------------------------------
+E. STRUCTURED PREDICTION HELPERS
+----------------------------------------------------------------------
+
+13. label_to_class_name(label)
+- convert numeric binary label to textual class name.
+
+14. build_prediction_records(feature_records, predicted_labels, predicted_scores=None)
+
+Purpose:
+- attach prediction outputs back to structured feature records.
+
+15. predict_from_runtime_feature_record(model, runtime_feature_record)
+
+Purpose:
+- predict label and optional score for one runtime feature record.
+
+Why these exist:
+- rest of project prefers structured records, not just raw arrays.
+
+----------------------------------------------------------------------
+F. STARTUP MODEL-BUILDING HELPER
+----------------------------------------------------------------------
+
+16. build_eye_lbp_model(...)
+
+Purpose:
+- full startup training pipeline:
+  - load training records,
+  - preprocess them,
+  - extract LBP features,
+  - build X_train / y_train / metadata,
+  - train classifier,
+  - return reusable model bundle.
+
+The returned model bundle contains:
+- trained model,
+- configs,
+- dataset root,
+- training sample count,
+- feature count,
+- shapes,
+- class counts,
+- training metadata,
+- feature records,
+- X_train,
+- y_train.
+
+This is the main bridge between the training side and the runtime side of the
+project.
+
+----------------------------------------------------------------------
+G. CONVENIENCE WRAPPER
+----------------------------------------------------------------------
+
+17. train_and_predict(X_train, y_train, X_test, classifier_config=None)
+
+Purpose:
+- compact helper for experiments/tests:
+  - train model,
+  - predict labels,
+  - predict scores.
+
+----------------------------------------------------------------------
+H. SUMMARY HELPER
+----------------------------------------------------------------------
+
+18. summarize_predictions(predicted_labels, ground_truth_labels=None)
+
+Purpose:
+- summarize predictions,
+- and optionally compute comparison statistics with ground truth.
+
+This is a compact lightweight evaluation helper local to the classifier layer.
+
+======================================================================
+8) MODULE: eye_state_lbp.py
+======================================================================
+
+OVERALL PURPOSE
+
+This module is the runtime LBP eye-state decision layer.
+
+It sits on top of:
+- eye ROI extraction,
+- runtime preprocessing,
+- LBP feature extraction,
+- trained classifier inference.
+
+Its job is to:
+- classify each detected eye separately,
+- convert classifier outputs into one unified open-score,
+- aggregate multiple eye predictions into one frame-level label,
+- optionally fall back to the older heuristic classifier.
+
+This module is the practical learned replacement for the heuristic runtime
+classifier.
+
+----------------------------------------------------------------------
+INTERNAL STRUCTURE
+----------------------------------------------------------------------
+
+A. runtime constants
+B. label/model normalization helpers
+C. failed-eye record builder
+D. single-eye LBP classification
+E. eye-prediction aggregation
+F. public frame-level interface
+
+----------------------------------------------------------------------
+A. RUNTIME CONSTANTS
+----------------------------------------------------------------------
+
+LBP_FRAME_OPEN_THRESHOLD
+- used to break ties through mean open-score.
+
+LBP_STRONG_OPEN_SCORE_THRESHOLD
+- documents notion of strong open score for potential future use.
+
+DEFAULT_FALLBACK_FRAME_LABEL
+- final default frame label.
+
+These constants define the runtime aggregation policy.
+
+----------------------------------------------------------------------
+B. NORMALIZATION HELPERS
+----------------------------------------------------------------------
+
+1. _normalize_eye_state_label(label)
+- normalize textual labels to canonical open/close/unknown vocabulary.
+
+2. _get_classifier_name_from_model_bundle(model_bundle)
+- read classifier_name from bundle if available.
+
+3. _validate_model_bundle(model_bundle)
+- ensure runtime bundle contains:
+  - model
+  - preprocessing_config
+  - lbp_config
+  - classifier_config
+
+4. _convert_prediction_to_open_score(predicted_label, predicted_score, classifier_name)
+- unify classifier output into one open-score in [0, 1].
+
+Rules:
+- no numeric score -> hard-label score,
+- knn -> probability-like score,
+- linear_svm -> sigmoid(decision value),
+- otherwise -> hard-label score.
+
+These helpers make runtime aggregation classifier-family-independent.
+
+----------------------------------------------------------------------
+C. FAILED-EYE RECORD BUILDER
+----------------------------------------------------------------------
+
+5. _build_empty_eye_prediction(eye_box, eye_index, reason)
+
+Purpose:
+- create a standard failed-eye prediction record.
+
+Why it exists:
+- later aggregation can handle failures and successes in one consistent list
+  structure.
+
+----------------------------------------------------------------------
+D. SINGLE-EYE LBP CLASSIFICATION
+----------------------------------------------------------------------
+
+6. classify_single_eye_lbp(...)
+
+Purpose:
+- classify one detected eye box using the trained LBP model bundle.
+
+Internal steps:
+- validate model bundle,
+- extract eye ROI using eye_state.py helper,
+- if invalid -> return empty prediction record,
+- prepare runtime feature record,
+- run classifier inference,
+- normalize class name,
+- convert prediction to unified open-score,
+- attach success flag and open-score,
+- return structured prediction record.
+
+This is the eye-level runtime inference function.
+
+----------------------------------------------------------------------
+E. FRAME-LEVEL AGGREGATION
+----------------------------------------------------------------------
+
+7. aggregate_eye_predictions(...)
+
+Purpose:
+- combine multiple eye-level prediction records into one frame-level label.
+
+Policy:
+- 0 valid eyes:
+  use previous_eye_state if valid, otherwise fallback label.
+- 1 valid eye:
+  use that eye directly.
+- 2+ valid eyes:
+  majority hard-label vote,
+  then mean open-score tie break,
+  then previous_eye_state,
+  then fallback label.
+
+This function is what turns eye-level inference into frame-level inference.
+
+----------------------------------------------------------------------
+F. PUBLIC FRAME-LEVEL INTERFACE
+----------------------------------------------------------------------
+
+8. classify_eye_state_lbp(...)
+
+Purpose:
+- full public runtime frame-level classifier.
+
+Internal branches:
+- if model_bundle is missing:
+  - optionally fall back directly to heuristic classifier,
+  - otherwise use previous/fallback label.
+- if model_bundle exists:
+  - classify each eye with classify_single_eye_lbp(...),
+  - aggregate with aggregate_eye_predictions(...),
+  - optionally use heuristic fallback if zero valid LBP eye predictions exist.
+
+Optional return_details:
+- returns diagnostic detail structure together with the final label.
+
+This is the main runtime function used by main.py and experiment_search.py.
+
+======================================================================
+9) MODULE: eye_state.py
+======================================================================
+
+OVERALL PURPOSE
+
+This module is the original heuristic frame-level eye-state classifier.
+
+It uses no learned model. Instead, it decides eye openness from visual cues:
+- dark-threshold structure,
+- connected-component blob geometry,
+- Hough circle evidence.
+
+Although the project later moved to LBP-based learned runtime classification,
+this module still remains important because:
+- it defines the original eye ROI extraction logic,
+- it is reusable as a heuristic fallback,
+- it preserves the earlier project reasoning about eye openness.
+
+----------------------------------------------------------------------
+INTERNAL STRUCTURE
+----------------------------------------------------------------------
+
+A. heuristic tuning constants
+B. debug counters
+C. low-level geometry/utility helpers
+D. debug-update helpers
+E. eye ROI extraction and preprocessing
+F. threshold-based evidence extraction
+G. circle-based evidence extraction
+H. score construction
+I. single-eye classification
+J. frame-level aggregation
+
+----------------------------------------------------------------------
+A. HEURISTIC CONSTANTS
+----------------------------------------------------------------------
+
+These constants define:
+- eye ROI padding,
+- normalized eye size,
+- analysis-band crop,
+- blur sizes,
+- dark-ratio target,
+- blob area/geometry thresholds,
+- Hough circle settings,
+- eye-level decision thresholds,
+- frame-level aggregation thresholds,
+- debug flags.
+
+This block is the tuning surface of the heuristic classifier.
+
+----------------------------------------------------------------------
+B. DEBUG BOOKKEEPING
+----------------------------------------------------------------------
+
+DEBUG_COUNTERS
+
+Purpose:
+- store running counts and score sums for optional debug mode.
+
+Why it exists:
+- tuning the heuristic classifier is much easier when running statistics can be
+  printed periodically.
+
+----------------------------------------------------------------------
+C. GEOMETRIC / UTILITY HELPERS
+----------------------------------------------------------------------
+
+1. _clamp_box_to_frame(gray_frame, box)
+- clamp a box to valid image coordinates.
+
+2. _triangular_score(value, center, tolerance)
+- compute a soft score centered around one ideal value.
+
+Why these exist:
+- one supports safe slicing,
+- the other supports heuristic scoring of “good” ranges.
+
+----------------------------------------------------------------------
+D. DEBUG HELPERS
+----------------------------------------------------------------------
+
+3. _update_eye_debug_counters(...)
+- update debug statistics for one eye decision.
+
+4. _update_frame_debug_counters(frame_label, eye_count)
+- update debug statistics for one frame decision.
+
+These are inactive unless DEBUG_EYE_STATE is enabled.
+
+----------------------------------------------------------------------
+E. ROI EXTRACTION AND PREPROCESSING
+----------------------------------------------------------------------
+
+5. extract_eye_roi(gray_frame, eye_box, padding_ratio=...)
+- add small padding and crop eye ROI safely.
+
+6. normalize_eye_roi(eye_roi)
+- resize eye ROI to standard fixed geometry.
+
+7. crop_eye_analysis_band(normalized_eye_roi)
+- keep central vertical band.
+
+8. preprocess_eye_roi(eye_roi)
+- full heuristic preprocessing pipeline:
+  - normalize size,
+  - crop central band,
+  - equalize histogram,
+  - Gaussian blur.
+
+These functions prepare the image for heuristic evidence extraction.
+
+----------------------------------------------------------------------
+F. THRESHOLD-BASED EVIDENCE EXTRACTION
+----------------------------------------------------------------------
+
+9. threshold_eye_roi(preprocessed_eye_roi)
+- apply inverted Otsu thresholding and morphological opening.
+
+10. compute_threshold_evidence(binary_eye_roi)
+- compute:
+  - dark ratio,
+  - blob area ratio,
+  - blob distance from center,
+  - blob aspect ratio,
+  - blob fill ratio,
+  - has_good_pupil_blob.
+
+This is the threshold/blob-analysis branch of the heuristic method.
+
+----------------------------------------------------------------------
+G. CIRCLE-BASED EVIDENCE EXTRACTION
+----------------------------------------------------------------------
+
+11. detect_iris_circle(preprocessed_eye_roi)
+
+Purpose:
+- search for iris/pupil-like circle evidence with HoughCircles.
+
+Returns:
+- circle_found
+- circle_score
+
+This is the strongest positive cue for eye openness in the heuristic design.
+
+----------------------------------------------------------------------
+H. SCORE CONSTRUCTION
+----------------------------------------------------------------------
+
+12. compute_threshold_score(threshold_evidence)
+- convert threshold/blob evidence into one normalized threshold score.
+
+13. compute_eye_open_score(threshold_score, circle_evidence)
+- combine threshold score and circle score into one final open score.
+
+This separates raw evidence extraction from decision scoring.
+
+----------------------------------------------------------------------
+I. SINGLE-EYE CLASSIFICATION
+----------------------------------------------------------------------
+
+14. classify_single_eye(gray_frame, eye_box)
+
+Purpose:
+- full heuristic classification for one eye.
+
+Internal stages:
+- extract eye ROI,
+- preprocess it,
+- threshold it,
+- compute threshold evidence,
+- detect circles,
+- compute threshold/open scores,
+- decide through three positive routes:
+  - circle route,
+  - hybrid route,
+  - threshold-only route,
+- update debug counters,
+- return:
+  - label,
+  - open score.
+
+This is the eye-level heuristic decision core.
+
+----------------------------------------------------------------------
+J. FRAME-LEVEL PUBLIC INTERFACE
+----------------------------------------------------------------------
+
+15. classify_eye_state(gray_frame, face_parts)
+
+Purpose:
+- combine one or more eye-level heuristic classifications into one frame-level
+  label.
+
+Policy:
+- no eyes -> closed,
+- one eye -> open if label or score is strong enough,
+- multiple eyes -> open if:
+  - at least two eyes vote open and support is good,
+  - or one eye is strongly open and average support is acceptable,
+  - or mean support is globally strong,
+  - otherwise closed.
+
+This is the main public heuristic classifier used as fallback by eye_state_lbp.py.
+
+======================================================================
+10) MODULE: detectors.py
+======================================================================
+
+OVERALL PURPOSE
+
+This module is the localization layer of the project.
+
+It performs:
+- loading Haar cascades,
+- detecting faces in a grayscale frame,
+- choosing one stable main face,
+- detecting eyes and mouth within that face.
+
+It provides the whole project with one stable geometric vocabulary:
+- face_boxes
+- main_face
+- face_parts["eyes"]
+- face_parts["mouth"]
+
+Everything that happens later in runtime classification depends on these
+outputs.
+
+----------------------------------------------------------------------
+INTERNAL STRUCTURE
+----------------------------------------------------------------------
+
+A. detector tuning constants
+B. cascade-loading helper
+C. box/geometry helpers
+D. overlap filtering and candidate selection
+E. ROI preparation helpers
+F. eye/mouth localization inside face ROI
+G. public detector interface
+
+----------------------------------------------------------------------
+A. DETECTOR CONSTANTS
+----------------------------------------------------------------------
+
+These define:
+- face-cascade parameters,
+- overlap thresholds,
+- temporal continuity thresholds,
+- eye search region,
+- mouth search region,
+- eye/mouth size limits,
+- maximum number of retained eye/mouth boxes.
+
+This is the tuning surface of the localization layer.
+
+----------------------------------------------------------------------
+B. CASCADE-LOADING HELPER
+----------------------------------------------------------------------
+
+1. _load_single_cascade(cascade_path)
+
+Purpose:
+- load one Haar cascade XML file safely,
+- raise clear error if loading fails.
+
+----------------------------------------------------------------------
+C. BOX / GEOMETRY HELPERS
+----------------------------------------------------------------------
+
+2. _to_box_list(detected_boxes)
+- normalize OpenCV detection output to plain (x, y, w, h) tuples.
+
+3. _box_area(box)
+- compute box area.
+
+4. _box_center(box)
+- compute box center.
+
+5. _center_distance(box_a, box_b)
+- compute Euclidean center distance.
+
+6. _compute_iou(box_a, box_b)
+- compute Intersection over Union.
+
+7. _unflip_box_horizontally(box, frame_width)
+- map detection from flipped-image coordinates back to original coordinates.
+
+These helpers support both detector output normalization and temporal selection.
+
+----------------------------------------------------------------------
+D. FILTERING / CANDIDATE-SELECTION HELPERS
+----------------------------------------------------------------------
+
+8. _merge_boxes(boxes, iou_threshold)
+- keep large boxes first, suppress strong overlaps.
+
+9. _select_best_eye_boxes(eye_boxes, max_eye_count=...)
+- keep largest eye boxes, then sort left-to-right.
+
+10. _select_best_mouth_boxes(mouth_boxes, max_mouth_count=...)
+- keep strongest mouth candidates, favor larger and lower detections.
+
+These helpers clean up raw cascade outputs.
+
+----------------------------------------------------------------------
+E. ROI PREPARATION HELPERS
+----------------------------------------------------------------------
+
+11. _extract_face_roi(gray_frame, face_box)
+- clamp selected face and crop face ROI.
+
+12. _prepare_downscaled_gray_frame(gray_frame, downscale_factor)
+- optionally downscale frame before face detection.
+
+13. _scale_size_for_downscaled_frame(size, downscale_factor)
+- scale detector min-size to match downscaled frame.
+
+14. _rescale_box_to_original_frame(box, downscale_factor)
+- map detected boxes back to original-frame coordinates.
+
+These helpers support efficient and consistent face detection.
+
+----------------------------------------------------------------------
+F. PART-LOCALIZATION HELPERS
+----------------------------------------------------------------------
+
+15. _detect_eyes_in_face_roi(face_roi, face_coords, face_box, cascades)
+
+Purpose:
+- search for eyes only in constrained upper face region,
+- enforce plausible size limits,
+- convert detections to full-frame coordinates,
+- merge overlaps,
+- keep best final eye boxes.
+
+16. _detect_mouth_in_face_roi(face_roi, face_coords, face_box, cascades)
+
+Purpose:
+- search for mouth only in constrained lower face region,
+- enforce plausible size limits,
+- convert detections to full-frame coordinates,
+- merge overlaps,
+- keep best final mouth boxes.
+
+These two functions are the core facial-part localizers.
+
+----------------------------------------------------------------------
+G. PUBLIC DETECTOR INTERFACE
+----------------------------------------------------------------------
+
+17. load_cascades(paths)
+- load all project cascades and return a named dictionary.
+
+18. merge_face_boxes(face_boxes, iou_threshold=...)
+- public wrapper around generic merging helper.
+
+19. detect_faces(gray_frame, cascades, downscale_factor=1.0)
+
+Purpose:
+- detect faces in one frame.
+
+Strategy:
+- optional frame downscaling,
+- frontal-face detection first,
+- if frontal succeeds, use it,
+- otherwise try left profile and flipped right profile,
+- rescale detections back to original coordinates,
+- merge overlaps.
+
+20. select_main_face(face_boxes, previous_face=None)
+
+Purpose:
+- choose one main face.
+
+Strategy:
+- if no previous face -> choose largest face,
+- otherwise prefer overlapping/near previous face,
+- fall back to largest current face.
+
+21. detect_face_parts(gray_frame, face_box, cascades, enable_mouth_detection=True)
+
+Purpose:
+- detect eyes and mouth inside the selected face.
+
+Return:
+- stable dictionary with:
+  - "eyes"
+  - "mouth"
+
+This is the main facial-part localization entry point used by runtime modules.
+
+======================================================================
+11) MODULE: main.py
+======================================================================
+
+OVERALL PURPOSE
+
+This module is the reusable full runtime pipeline.
+
+Its purpose is to:
+- build the startup-trained model,
+- load detectors,
+- open the real video,
+- process frames sequentially,
+- localize face and eye regions,
+- classify frame-level eye state,
+- store per-frame results,
+- evaluate those results,
+- save logs and reports.
+
+It is both:
+- the classic manual entry point,
+- and the reusable runtime function called by auto_select_and_run.py.
+
+So this is the project’s concrete execution engine.
+
+----------------------------------------------------------------------
+INTERNAL STRUCTURE
+----------------------------------------------------------------------
+
+A. imports
+B. runtime constants
+C. live-preview constants
+D. project path helpers
+E. output/log helpers
+F. video helpers
+G. result-storage helper
+H. preview helpers
+I. reusable final pipeline runner
+J. preserved main() entry point
+
+----------------------------------------------------------------------
+A. IMPORTS
+----------------------------------------------------------------------
+
+The module imports:
+- filesystem/timing/log helpers,
+- OpenCV,
+- detector interface,
+- startup model-building helper,
+- runtime LBP eye-state classifier,
+- evaluation helpers.
+
+This import set clearly shows that main.py is a coordinator module.
+
+----------------------------------------------------------------------
+B. RUNTIME CONFIGURATION
+----------------------------------------------------------------------
+
+Constants define:
+- mouth detection enabled,
+- face-detection downscale factor,
+- LBP heuristic fallback policy,
+- fallback frame label.
+
+These constants keep runtime policy centralized.
+
+----------------------------------------------------------------------
+C. PREVIEW CONFIGURATION
+----------------------------------------------------------------------
+
+Constants define:
+- whether live preview is shown,
+- whether face/eye/mouth boxes are drawn,
+- whether frame eye-state text is shown,
+- preview frame frequency,
+- preview window name.
+
+This keeps visualization behavior separate from the main runtime logic.
+
+----------------------------------------------------------------------
+D. PATH HELPERS
+----------------------------------------------------------------------
+
+1. get_project_paths()
+- build all input/output/reference paths.
+
+2. ensure_output_directories(paths)
+- create all needed output directories.
+
+This gives the whole runtime pipeline a stable path bundle.
+
+----------------------------------------------------------------------
+E. OUTPUT / LOG HELPERS
+----------------------------------------------------------------------
+
+3. _normalize_output_file_prefix(output_file_prefix)
+- sanitize optional filename prefix.
+
+4. get_output_file_paths(paths, output_file_prefix=None)
+- build run-log and evaluation-report file paths.
+
+5. reset_text_file(file_path)
+- create or clear a text file.
+
+6. log_message(message, log_path=None, print_to_console=True)
+- print and optionally append timestamped message to run log.
+
+These helpers define the text-output/reporting side of the runtime pipeline.
+
+----------------------------------------------------------------------
+F. VIDEO HELPERS
+----------------------------------------------------------------------
+
+7. open_video(video_path)
+- open video file safely.
+
+8. convert_to_grayscale(frame)
+- convert runtime frame to grayscale.
+
+----------------------------------------------------------------------
+G. RESULT STORAGE
+----------------------------------------------------------------------
+
+9. store_frame_result(...)
+
+Purpose:
+- append one structured runtime frame record containing:
+  - frame index,
+  - face detections,
+  - selected main face,
+  - face parts,
+  - predicted eye state,
+  - localization time,
+  - classification time,
+  - total frame time.
+
+Why it matters:
+- evaluation.py depends on this exact record structure.
+
+----------------------------------------------------------------------
+H. PREVIEW HELPERS
+----------------------------------------------------------------------
+
+10. build_preview_frame(frame, face_boxes, main_face, face_parts, eye_state)
+- build annotated preview image.
+
+11. show_preview_frame(preview_frame)
+- display preview and return pressed key.
+
+These are purely runtime-visualization helpers.
+
+----------------------------------------------------------------------
+I. REUSABLE FINAL PIPELINE RUNNER
+----------------------------------------------------------------------
+
+12. run_final_pipeline(...)
+
+Purpose:
+- execute the complete runtime pipeline for one chosen config set.
+
+This is the core function of the module.
+
+Its internal logic is:
+
+1. build paths and output directories,
+2. build output filenames,
+3. reset run log,
+4. log startup info,
+5. build startup-trained model bundle,
+6. log model-build info,
+7. load detection cascades,
+8. open video and initialize runtime state,
+9. optional preview initialization,
+10. frame loop:
+    - read frame,
+    - grayscale conversion,
+    - detect faces,
+    - select main face,
+    - detect face parts,
+    - classify frame eye state through eye_state_lbp.py,
+    - measure timings,
+    - store frame result,
+    - update temporal state,
+    - optionally show preview,
+    - periodically log progress,
+11. release resources,
+12. log final frame counts,
+13. evaluate stored frame results,
+14. optionally print evaluation summary,
+15. save evaluation report with extra run-configuration lines,
+16. log report locations,
+17. return structured run_result bundle.
+
+Why this function matters:
+- it is the exact final execution path used by the finished project.
+
+The returned run_result contains:
+- paths,
+- output files,
+- run name,
+- model bundle,
+- model build time,
+- frame count,
+- frame-result count,
+- evaluation summary.
+
+----------------------------------------------------------------------
+J. MAIN ENTRY POINT
+----------------------------------------------------------------------
+
+13. main()
+
+Purpose:
+- preserved manual/default entry point.
+
+It simply delegates to run_final_pipeline(...) with default settings.
+
+Why it exists:
+- still useful for direct manual project execution,
+- preserves a classic executable script interface.
+
+======================================================================
+12) MODULE: evaluation.py
+======================================================================
+
+OVERALL PURPOSE
+
+This module is the final evaluation and reporting layer.
+
+Its job is to take the stored frame_results from runtime processing and compare
+their predicted eye-state labels against the ground-truth label file.
+
+It computes:
+- aligned sequence lengths,
+- accuracy,
+- confusion-style counts,
+- timing summaries,
+- formatted report text,
+- saved evaluation report.
+
+It is intentionally independent from how predictions were produced.
+
+----------------------------------------------------------------------
+INTERNAL STRUCTURE
+----------------------------------------------------------------------
+
+A. label normalization
+B. input loading and extraction helpers
+C. sequence alignment
+D. accuracy and confusion-style statistics
+E. timing statistics
+F. full evaluation pipeline
+G. formatting / printing / saving helpers
+
+----------------------------------------------------------------------
+A. LABEL NORMALIZATION
+----------------------------------------------------------------------
+
+1. normalize_eye_state_label(label)
+
+Purpose:
+- normalize textual labels into canonical evaluation vocabulary:
+  - open
+  - close
+  - unknown / other
+
+Why it exists:
+- runtime and ground-truth sources may use slightly different label strings.
+
+----------------------------------------------------------------------
+B. INPUT LOADING AND EXTRACTION
+----------------------------------------------------------------------
+
+2. load_ground_truth(ground_truth_path)
+- read ground-truth file line by line and normalize labels.
+
+3. extract_predicted_labels(frame_results)
+- extract eye_state fields from frame results.
+
+4. extract_timing_values(frame_results, timing_key)
+- generic timing-series extractor.
+
+5. extract_localization_times(frame_results)
+- wrapper for localization_time_ms.
+
+6. extract_classification_times(frame_results)
+- wrapper for classification_time_ms.
+
+7. extract_total_frame_times(frame_results)
+- wrapper for total_frame_time_ms.
+
+These helpers separate file/result parsing from actual evaluation metrics.
+
+----------------------------------------------------------------------
+C. SEQUENCE ALIGNMENT
+----------------------------------------------------------------------
+
+8. align_label_sequences(predicted_labels, ground_truth_labels)
+
+Purpose:
+- align prediction and ground-truth sequences by truncating both to common
+  length.
+
+Why it exists:
+- predicted count and reference count may differ,
+- simple common-prefix alignment keeps evaluation deterministic and safe.
+
+----------------------------------------------------------------------
+D. ACCURACY AND CONFUSION-STYLE STATISTICS
+----------------------------------------------------------------------
+
+9. compute_confusion_counts(predicted_labels, ground_truth_labels)
+
+Purpose:
+- count:
+  - open_as_open
+  - open_as_close
+  - close_as_open
+  - close_as_close
+  - other
+
+10. compute_accuracy(predicted_labels, ground_truth_labels)
+
+Purpose:
+- compute:
+  - correct_count
+  - compared_count
+  - accuracy_percent
+
+These functions form the label-comparison metric layer.
+
+----------------------------------------------------------------------
+E. TIMING STATISTICS
+----------------------------------------------------------------------
+
+11. compute_timing_stats(timing_values_ms)
+
+Purpose:
+- compute:
+  - count
+  - mean
+  - min
+  - max
+
+Used separately for:
+- localization timings,
+- classification timings,
+- total frame-processing timings.
+
+----------------------------------------------------------------------
+F. COMPLETE EVALUATION PIPELINE
+----------------------------------------------------------------------
+
+12. evaluate_results(frame_results, ground_truth_path)
+
+Purpose:
+- run the entire evaluation workflow in one function.
+
+Internal stages:
+1. load ground truth,
+2. extract predictions,
+3. extract timing series,
+4. align sequences,
+5. compute accuracy,
+6. compute confusion counts,
+7. compute timing summaries,
+8. return one structured summary dictionary.
+
+This is the core public evaluation function used by main.py and
+experiment_search.py.
+
+----------------------------------------------------------------------
+G. SUMMARY FORMATTING AND OUTPUT
+----------------------------------------------------------------------
+
+13. format_evaluation_summary(summary)
+
+Purpose:
+- convert structured evaluation summary into readable multiline text.
+
+14. print_evaluation_summary(summary)
+
+Purpose:
+- print wrapper.
+
+15. save_evaluation_report(summary, report_path, extra_lines=None)
+
+Purpose:
+- save evaluation report as plain text,
+- optionally prepend extra run-configuration lines.
+
+This is the final reporting interface of the evaluation layer.
+
+======================================================================
+FINAL SUMMARY OF HOW ALL MODULES FIT TOGETHER
+======================================================================
+
+The whole project can be read as one layered system:
+
+TOP ORCHESTRATION
+- auto_select_and_run.py
+    Runs search, chooses best config, launches final run.
+
+EXPERIMENT SEARCH
+- experiment_search.py
+    Builds config combinations, runs experiments, ranks them.
+
+TRAINING-DATA INGESTION
+- eye_training_io.py
+    Loads structured training records from the mrlEyes dataset.
+
+SHARED IMAGE PREPROCESSING
+- eye_preprocessing.py
+    Standardizes eye images/ROIs into stable grayscale normalized form.
+
+FEATURE-BRIDGE LAYER
+- eye_lbp_dataset.py
+    Connects records to preprocessing, LBP extraction, matrices, metadata.
+
+LBP DESCRIPTOR ENGINE
+- lbp_features.py
+    Converts preprocessed eye images into numeric LBP descriptors.
+
+SUPERVISED CLASSIFIER LAYER
+- eye_lbp_classifier.py
+    Trains/predicts learned models and builds reusable model bundles.
+
+RUNTIME LBP EYE-STATE CLASSIFIER
+- eye_state_lbp.py
+    Uses the trained model bundle to classify eyes and aggregate frame labels.
+
+HEURISTIC FALLBACK / LEGACY RUNTIME CLASSIFIER
+- eye_state.py
+    Provides original heuristic eye-state logic and eye-ROI extraction.
+
+LOCALIZATION LAYER
+- detectors.py
+    Finds faces, eyes, mouth in grayscale video frames.
+
+FINAL EXECUTION PIPELINE
+- main.py
+    Runs one full real video pass with one chosen configuration.
+
+FINAL EVALUATION / REPORTING
+- evaluation.py
+    Compares predictions against ground truth and formats/saves final results.
+
+So the project is not just a classifier and not just a detector. It is a full
+system composed of:
+- data ingestion,
+- preprocessing,
+- descriptor construction,
+- supervised learning,
+- runtime localization,
+- runtime frame inference,
+- experiment management,
+- final orchestration,
+- and evaluation/reporting.
+
+That is the full purpose and internal structure of all the modules together.
