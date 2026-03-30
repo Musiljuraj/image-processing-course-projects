@@ -1,0 +1,51 @@
+=== Run configuration ===
+Run name: auto_selected_best_run
+Project root: /home/musiljuraj/3rls/ZAO/DU/07_eye_lbp
+Video path: /home/musiljuraj/3rls/ZAO/DU/07_eye_lbp/input/video/fusek_face_car_01.avi
+Ground truth path: /home/musiljuraj/3rls/ZAO/DU/07_eye_lbp/input/ground_truth/eye-state.txt
+Face detection downscale factor: 0.75
+Mouth detection enabled: True
+Live preview enabled: False
+Preview every N frames: 1
+LBP fallback to heuristic: True
+LBP fallback frame label: close
+LBP preprocessing config: {'grayscale': True, 'target_size': (80, 40), 'crop_analysis_band': True, 'analysis_top_ratio': 0.15, 'analysis_bottom_ratio': 0.85, 'contrast_method': 'equalize', 'clahe_clip_limit': 2.0, 'clahe_tile_grid_size': (8, 8), 'filter_name': 'gaussian', 'gaussian_kernel_size': (5, 5), 'median_blur_size': 5}
+LBP feature config: {'neighbors': 8, 'radius': 2.0, 'method': 'uniform', 'grid_shape': (2, 2), 'normalize_histogram': True}
+LBP classifier config: {'classifier_name': 'knn', 'n_neighbors': 3}
+LBP training sample count: 84898
+LBP feature count: 40
+LBP training class counts: {'close': 41946, 'open': 42952}
+LBP model build time [ms]: 179609.302
+
+=== Evaluation summary ===
+Predicted labels:      533
+Ground-truth labels:   533
+Compared labels:       533
+
+Correct predictions:   355
+Accuracy [%]:          66.60
+
+Confusion-style counts:
+  open  -> open:       214
+  open  -> close:      25
+  close -> open:       153
+  close -> close:      141
+  other:               0
+
+Localization timing [ms]:
+  measured frames:     533
+  mean:                35.013
+  min:                 17.354
+  max:                 87.705
+
+Classification timing [ms]:
+  measured frames:     533
+  mean:                10.142
+  min:                 0.021
+  max:                 35.345
+
+Total frame-processing timing [ms]:
+  measured frames:     533
+  mean:                45.512
+  min:                 17.651
+  max:                 103.677

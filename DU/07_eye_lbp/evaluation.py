@@ -9,7 +9,7 @@ Its responsibilities are:
 - extracting predicted labels from stored frame results,
 - aligning both label sequences,
 - computing accuracy and simple confusion-style counts,
-- computing localization timing statistics,
+- computing localization, classification, and total frame timing statistics,
 - formatting and saving the final evaluation summary.
 """
 
@@ -27,12 +27,6 @@ def normalize_eye_state_label(label):
     The evaluation stage operates with two canonical label names:
     - "open"
     - "close"
-
-    Several textual variants are accepted so that the evaluation remains
-    tolerant to minor naming differences in predictions or reference data.
-
-    Any unrecognized label is returned unchanged so it can still be counted
-    explicitly in the "other" category.
     """
 
     if label is None:
@@ -56,14 +50,6 @@ def normalize_eye_state_label(label):
 def load_ground_truth(ground_truth_path):
     """
     Load ground-truth eye-state labels from a text file.
-
-    Expected file structure:
-    - one label per line,
-    - empty lines ignored,
-    - labels normalized into the internal evaluation vocabulary.
-
-    The function returns a list of normalized labels in the same order as
-    they appear in the file.
     """
 
     ground_truth_labels = []
@@ -83,12 +69,6 @@ def load_ground_truth(ground_truth_path):
 def extract_predicted_labels(frame_results):
     """
     Extract predicted eye-state labels from the frame-result list.
-
-    Each frame result is expected to contain the key:
-        "eye_state"
-
-    The values are normalized before being returned so that prediction labels
-    and ground-truth labels follow the same naming convention.
     """
 
     predicted_labels = []
@@ -101,23 +81,47 @@ def extract_predicted_labels(frame_results):
     return predicted_labels
 
 
-def extract_localization_times(frame_results):
+def extract_timing_values(frame_results, timing_key):
     """
-    Extract measured localization times from the stored frame results.
+    Extract one timing series from the stored frame results.
 
     Missing timing values are ignored. The resulting list contains floating-
     point timing values in milliseconds.
     """
 
-    localization_times = []
+    timing_values = []
 
     for frame_result in frame_results:
-        localization_time = frame_result.get("localization_time_ms")
+        timing_value = frame_result.get(timing_key)
 
-        if localization_time is not None:
-            localization_times.append(float(localization_time))
+        if timing_value is not None:
+            timing_values.append(float(timing_value))
 
-    return localization_times
+    return timing_values
+
+
+def extract_localization_times(frame_results):
+    """
+    Extract measured localization times from the stored frame results.
+    """
+
+    return extract_timing_values(frame_results, "localization_time_ms")
+
+
+def extract_classification_times(frame_results):
+    """
+    Extract measured classification times from the stored frame results.
+    """
+
+    return extract_timing_values(frame_results, "classification_time_ms")
+
+
+def extract_total_frame_times(frame_results):
+    """
+    Extract measured total frame-processing times from the stored frame results.
+    """
+
+    return extract_timing_values(frame_results, "total_frame_time_ms")
 
 
 # ---------------------------------------------------------------------
@@ -128,14 +132,6 @@ def align_label_sequences(predicted_labels, ground_truth_labels):
     """
     Align predicted and reference label sequences by truncating them to the
     same length.
-
-    This simple alignment strategy is sufficient for the current assignment.
-    It ensures evaluation can still be performed when:
-    - the processing run is interrupted early,
-    - the prediction sequence is shorter than the reference sequence,
-    - the input data contains a minor length mismatch.
-
-    The function returns both original sequence lengths and the aligned data.
     """
 
     aligned_count = min(len(predicted_labels), len(ground_truth_labels))
@@ -159,16 +155,6 @@ def align_label_sequences(predicted_labels, ground_truth_labels):
 def compute_confusion_counts(predicted_labels, ground_truth_labels):
     """
     Compute confusion-style counts for the binary open/close task.
-
-    The count names follow the pattern:
-        actual_as_predicted
-
-    Example:
-        "open_as_close" means that the ground truth was "open"
-        but the prediction was "close".
-
-    Any label pair outside the expected binary scheme is accumulated into
-    the "other" category.
     """
 
     counts = {
@@ -197,12 +183,6 @@ def compute_confusion_counts(predicted_labels, ground_truth_labels):
 def compute_accuracy(predicted_labels, ground_truth_labels):
     """
     Compute simple frame-level classification accuracy.
-
-    Accuracy is defined as:
-        correct_predictions / compared_predictions
-
-    The function returns the number of correct matches, the number of
-    compared labels, and the accuracy percentage.
     """
 
     compared_count = min(len(predicted_labels), len(ground_truth_labels))
@@ -233,9 +213,9 @@ def compute_accuracy(predicted_labels, ground_truth_labels):
 # Timing statistics
 # ---------------------------------------------------------------------
 
-def compute_timing_stats(localization_times_ms):
+def compute_timing_stats(timing_values_ms):
     """
-    Compute basic descriptive statistics for localization times.
+    Compute basic descriptive statistics for one timing series.
 
     The returned values are expressed in milliseconds and include:
     - number of measured frames,
@@ -244,7 +224,7 @@ def compute_timing_stats(localization_times_ms):
     - maximum.
     """
 
-    if not localization_times_ms:
+    if not timing_values_ms:
         return {
             "count": 0,
             "mean_ms": 0.0,
@@ -253,10 +233,10 @@ def compute_timing_stats(localization_times_ms):
         }
 
     return {
-        "count": len(localization_times_ms),
-        "mean_ms": mean(localization_times_ms),
-        "min_ms": min(localization_times_ms),
-        "max_ms": max(localization_times_ms),
+        "count": len(timing_values_ms),
+        "mean_ms": mean(timing_values_ms),
+        "min_ms": min(timing_values_ms),
+        "max_ms": max(timing_values_ms),
     }
 
 
@@ -273,14 +253,16 @@ def evaluate_results(frame_results, ground_truth_path):
     - aligned comparison length,
     - accuracy information,
     - confusion-style counts,
-    - timing statistics.
-
-    This function is the main evaluation entry point used by the main program.
+    - timing statistics for localization, classification, and total frame
+      processing.
     """
 
     ground_truth_labels = load_ground_truth(ground_truth_path)
     predicted_labels = extract_predicted_labels(frame_results)
+
     localization_times_ms = extract_localization_times(frame_results)
+    classification_times_ms = extract_classification_times(frame_results)
+    total_frame_times_ms = extract_total_frame_times(frame_results)
 
     alignment = align_label_sequences(predicted_labels, ground_truth_labels)
 
@@ -289,7 +271,10 @@ def evaluate_results(frame_results, ground_truth_path):
 
     accuracy = compute_accuracy(aligned_predicted, aligned_ground_truth)
     confusion = compute_confusion_counts(aligned_predicted, aligned_ground_truth)
-    timing = compute_timing_stats(localization_times_ms)
+
+    localization_timing = compute_timing_stats(localization_times_ms)
+    classification_timing = compute_timing_stats(classification_times_ms)
+    total_frame_timing = compute_timing_stats(total_frame_times_ms)
 
     summary = {
         "predicted_count": alignment["predicted_count"],
@@ -297,7 +282,11 @@ def evaluate_results(frame_results, ground_truth_path):
         "aligned_count": alignment["aligned_count"],
         "accuracy": accuracy,
         "confusion": confusion,
-        "timing": timing,
+        "timing": {
+            "localization": localization_timing,
+            "classification": classification_timing,
+            "total_frame": total_frame_timing,
+        },
     }
 
     return summary
@@ -310,14 +299,13 @@ def evaluate_results(frame_results, ground_truth_path):
 def format_evaluation_summary(summary):
     """
     Convert the evaluation summary into a readable multiline text block.
-
-    This text representation is used both for console output and for saving
-    the final report file.
     """
 
     accuracy = summary["accuracy"]
     confusion = summary["confusion"]
-    timing = summary["timing"]
+    localization_timing = summary["timing"]["localization"]
+    classification_timing = summary["timing"]["classification"]
+    total_frame_timing = summary["timing"]["total_frame"]
 
     lines = [
         "=== Evaluation summary ===",
@@ -336,10 +324,22 @@ def format_evaluation_summary(summary):
         f"  other:               {confusion['other']}",
         "",
         "Localization timing [ms]:",
-        f"  measured frames:     {timing['count']}",
-        f"  mean:                {timing['mean_ms']:.3f}",
-        f"  min:                 {timing['min_ms']:.3f}",
-        f"  max:                 {timing['max_ms']:.3f}",
+        f"  measured frames:     {localization_timing['count']}",
+        f"  mean:                {localization_timing['mean_ms']:.3f}",
+        f"  min:                 {localization_timing['min_ms']:.3f}",
+        f"  max:                 {localization_timing['max_ms']:.3f}",
+        "",
+        "Classification timing [ms]:",
+        f"  measured frames:     {classification_timing['count']}",
+        f"  mean:                {classification_timing['mean_ms']:.3f}",
+        f"  min:                 {classification_timing['min_ms']:.3f}",
+        f"  max:                 {classification_timing['max_ms']:.3f}",
+        "",
+        "Total frame-processing timing [ms]:",
+        f"  measured frames:     {total_frame_timing['count']}",
+        f"  mean:                {total_frame_timing['mean_ms']:.3f}",
+        f"  min:                 {total_frame_timing['min_ms']:.3f}",
+        f"  max:                 {total_frame_timing['max_ms']:.3f}",
     ]
 
     return "\n".join(lines)
@@ -348,9 +348,6 @@ def format_evaluation_summary(summary):
 def print_evaluation_summary(summary):
     """
     Print the formatted evaluation summary to standard output.
-
-    This function is a convenience wrapper around the formatter so that
-    presentation logic stays centralized.
     """
 
     print(format_evaluation_summary(summary))
@@ -359,9 +356,6 @@ def print_evaluation_summary(summary):
 def save_evaluation_report(summary, report_path, extra_lines=None):
     """
     Save the formatted evaluation summary to a text report.
-
-    Optional extra lines can be placed before the main summary block. This is
-    useful for run configuration details such as file paths or runtime options.
     """
 
     report_text = format_evaluation_summary(summary)

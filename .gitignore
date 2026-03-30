@@ -53,3 +53,4 @@ wandb/
 *.onnx
 *.engine
 *:Zone.Identifier
+DU/07_eye_lbp/input/archives/
