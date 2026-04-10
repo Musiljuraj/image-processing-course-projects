@@ -3,20 +3,20 @@ Experiment count: 3
 Training subset limit per class: 150
 
 === Rank 1 / Experiment #3 ===
-Accuracy [%]:                         83.33
+Accuracy [%]:                         87.50
 Compared frames:                      120
-Correct predictions:                  100
+Correct predictions:                  105
 Processed frames:                     120
 Stopped early:                        False
 
 Timing [ms]:
-  model build total:                  400.320
-  training feature preparation:       399.573
-  training only:                      0.746
-  whole experiment total:             6225.008
-  localization mean per frame:        30.307
-  classification mean per frame:      16.217
-  total frame mean per frame:         46.919
+  model build total:                  259.999
+  training feature preparation:       259.527
+  training only:                      0.472
+  whole experiment total:             4847.600
+  localization mean per frame:        28.647
+  classification mean per frame:      8.560
+  total frame mean per frame:         37.388
 
 Training sample count:                300
 Feature count:                        40
@@ -31,49 +31,49 @@ Predicted labels:      120
 Ground-truth labels:   533
 Compared labels:       120
 
-Correct predictions:   100
-Accuracy [%]:          83.33
+Correct predictions:   105
+Accuracy [%]:          87.50
 
 Confusion-style counts:
-  open  -> open:       77
-  open  -> close:      4
-  close -> open:       16
-  close -> close:      23
+  open  -> open:       73
+  open  -> close:      8
+  close -> open:       7
+  close -> close:      32
   other:               0
 
 Localization timing [ms]:
   measured frames:     120
-  mean:                30.307
-  min:                 22.195
-  max:                 84.173
+  mean:                28.647
+  min:                 19.927
+  max:                 94.727
 
 Classification timing [ms]:
   measured frames:     120
-  mean:                16.217
-  min:                 6.346
-  max:                 40.368
+  mean:                8.560
+  min:                 4.518
+  max:                 13.590
 
 Total frame-processing timing [ms]:
   measured frames:     120
-  mean:                46.919
-  min:                 34.566
-  max:                 91.586
+  mean:                37.388
+  min:                 30.557
+  max:                 101.528
 
 === Rank 2 / Experiment #1 ===
-Accuracy [%]:                         47.50
+Accuracy [%]:                         42.50
 Compared frames:                      120
-Correct predictions:                  57
+Correct predictions:                  51
 Processed frames:                     120
 Stopped early:                        False
 
 Timing [ms]:
-  model build total:                  446.475
-  training feature preparation:       412.753
-  training only:                      33.720
-  whole experiment total:             5531.690
-  localization mean per frame:        32.291
-  classification mean per frame:      7.443
-  total frame mean per frame:         40.154
+  model build total:                  257.018
+  training feature preparation:       250.196
+  training only:                      6.822
+  whole experiment total:             4231.769
+  localization mean per frame:        26.572
+  classification mean per frame:      5.085
+  total frame mean per frame:         31.889
 
 Training sample count:                300
 Feature count:                        10
@@ -88,49 +88,49 @@ Predicted labels:      120
 Ground-truth labels:   533
 Compared labels:       120
 
-Correct predictions:   57
-Accuracy [%]:          47.50
+Correct predictions:   51
+Accuracy [%]:          42.50
 
 Confusion-style counts:
-  open  -> open:       19
-  open  -> close:      62
-  close -> open:       1
-  close -> close:      38
+  open  -> open:       12
+  open  -> close:      69
+  close -> open:       0
+  close -> close:      39
   other:               0
 
 Localization timing [ms]:
   measured frames:     120
-  mean:                32.291
-  min:                 22.296
-  max:                 113.919
+  mean:                26.572
+  min:                 17.268
+  max:                 96.360
 
 Classification timing [ms]:
   measured frames:     120
-  mean:                7.443
-  min:                 4.124
-  max:                 11.784
+  mean:                5.085
+  min:                 2.623
+  max:                 8.766
 
 Total frame-processing timing [ms]:
   measured frames:     120
-  mean:                40.154
-  min:                 29.729
-  max:                 118.376
+  mean:                31.889
+  min:                 22.075
+  max:                 99.301
 
 === Rank 3 / Experiment #2 ===
-Accuracy [%]:                         34.17
+Accuracy [%]:                         37.50
 Compared frames:                      120
-Correct predictions:                  41
+Correct predictions:                  45
 Processed frames:                     120
 Stopped early:                        False
 
 Timing [ms]:
-  model build total:                  401.482
-  training feature preparation:       400.655
-  training only:                      0.825
-  whole experiment total:             6632.139
-  localization mean per frame:        32.689
-  classification mean per frame:      17.190
-  total frame mean per frame:         50.281
+  model build total:                  263.968
+  training feature preparation:       263.329
+  training only:                      0.638
+  whole experiment total:             4725.635
+  localization mean per frame:        26.416
+  classification mean per frame:      9.535
+  total frame mean per frame:         36.166
 
 Training sample count:                300
 Feature count:                        20
@@ -145,30 +145,30 @@ Predicted labels:      120
 Ground-truth labels:   533
 Compared labels:       120
 
-Correct predictions:   41
-Accuracy [%]:          34.17
+Correct predictions:   45
+Accuracy [%]:          37.50
 
 Confusion-style counts:
-  open  -> open:       6
-  open  -> close:      75
+  open  -> open:       10
+  open  -> close:      71
   close -> open:       4
   close -> close:      35
   other:               0
 
 Localization timing [ms]:
   measured frames:     120
-  mean:                32.689
-  min:                 24.322
-  max:                 97.586
+  mean:                26.416
+  min:                 18.027
+  max:                 100.841
 
 Classification timing [ms]:
   measured frames:     120
-  mean:                17.190
-  min:                 6.094
-  max:                 140.761
+  mean:                9.535
+  min:                 4.467
+  max:                 34.671
 
 Total frame-processing timing [ms]:
   measured frames:     120
-  mean:                50.281
-  min:                 36.123
-  max:                 179.323
+  mean:                36.166
+  min:                 26.026
+  max:                 113.844

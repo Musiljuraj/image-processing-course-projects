@@ -54,3 +54,9 @@ wandb/
 *.engine
 *:Zone.Identifier
 DU/07_eye_lbp/input/archives/
+
+# Neural net assignment dataset
+DU/08_neural_netw/data/
+
+# Optional: other local archives
+*.zip
