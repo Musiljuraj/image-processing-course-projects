@@ -1,0 +1,174 @@
+This project is a YOLO-based object-detection project implemented in Python with OpenCV and the Ultralytics YOLO library. Its general purpose is to detect one user-selected object class in either a folder of still images or in a live video stream, then present the detections in a practical form. In the offline mode, the project processes a whole directory of images, extracts cropped image regions containing the detected objects of the selected class, and saves annotated copies of the original images with bounding boxes, labels, and a total detection count. In the live-stream mode, the project processes incoming video frames continuously, draws the detections directly onto each frame, shows the result live in an OpenCV window, and can optionally save annotated video output and sampled crops. In this way, the whole project demonstrates the same object-detection idea in two execution variants: batch image processing and real-time stream processing.
+
+
+
+The project achieves this purpose through a simple and consistent mechanism. First, the user specifies runtime parameters on the command line, especially the target class ID, model size or exact model file, and the relevant input and output settings. Then the script initializes a YOLO model. After that, it loads either a set of images from an input directory or a continuous video source. The model is run on each image or frame, but only detections belonging to the chosen class are kept, because class filtering is done directly during inference. For every accepted detection, the bounding-box coordinates are converted into safe image coordinates, then the script draws a rectangle and a text label onto a copy of the image or frame. In the batch version, the detected object region is also cropped and saved as a separate image. Finally, the script adds text showing the total number of detections of the selected class and either saves the result to disk or displays it live. The result is therefore both machine-processed and human-readable.
+
+
+
+The whole project consists of two main runnable modules: **cv5\_solution.py** and **cv5\_videostream.py**. The first module, cv5\_solution.py, is the offline batch-processing part. It is responsible for taking a folder of still images, running YOLO detection on every supported image file inside that folder, saving crops of the chosen class, and saving annotated versions of the original images. The second module, cv5\_videostream.py, is the live-stream processing part. It works with a continuous video source, runs YOLO on each frame, draws detections in real time, displays the output live, and optionally saves annotated video or sampled crops. Together, these two modules form one coherent project because they use the same detection idea, the same class-filtering strategy, a very similar annotation style, and the same overall sequence of detection, labeling, counting, and output generation.
+
+
+
+=======================================================================================================================================================================================
+
+
+
+In **cv5\_solution.py**, the program starts at the standard Python entry point “if \_\_name\_\_ == '\_\_main\_\_': main()”. The **main()** function is the central orchestration function and represents the beginning of the batch pipeline. The first function it uses is **parse\_args()**, whose purpose is to define and read all command-line arguments. This function makes it possible to specify the class ID to detect, the YOLO model size, the input directory, the output directory, an optional explicit model name or path, the bounding-box color, the confidence threshold, the IoU threshold, the rectangle thickness, and verbose mode. Its role is to separate configuration from processing logic, so that the rest of the program works with already prepared runtime settings.
+
+
+
+After argument parsing, **main() validates the input directory**. It checks whether the folder given by --input\_dir exists and is really a directory. If this condition is not met, the script terminates immediately. The next step is output preparation. The script creates a base output directory specified by --output\_dir and inside it creates two subdirectories named “crops” and “annotated”. This is an important design choice because the original input images are not modified directly. Instead, the derived outputs are stored in separate, well-organized folders.
+
+
+
+Next, the batch script **initializes the detection model**. The model is chosen either from the explicit --model argument or from the standard naming scheme yolov8{size}.pt, where the size is selected using --model\_size. The script then creates a YOLO object from that model name. At this point, it also tries to obtain the class-name mapping from the model, so that numeric class IDs can later be converted into readable labels. This model initialization step is essential because it loads the pretrained detection system that all later processing depends on.
+
+
+
+The next helper function used by main() is **list\_images(input\_dir)**. Its purpose is to scan the selected folder and return all files whose extensions match the supported image formats. These include .jpg, .jpeg, .png, .bmp, .tif, .tiff, and .webp. This function effectively builds the processing queue for the batch run. It is important because it ensures that only valid image files are sent further into the detection pipeline. If no supported images are found, the script ends with an informative error message.
+
+
+
+Inside main(), there is also a small helper called **class\_name\_for(cid)**, whose purpose is to convert the selected class ID into a readable class name whenever the model provides one. If the model does not expose names in the expected form, the function simply falls back to the numeric class ID as a string. This is used later when drawing labels on images, so that annotations can show a semantic label such as “car” instead of only the number 2.
+
+
+
+The **main processing loop in cv5\_solution.py** goes through all discovered images one by one. For each image, the script loads the image with OpenCV. If the image cannot be read, the program prints a warning and continues to the next file instead of aborting the whole run. After a valid image is loaded, the script obtains its dimensions and **creates a copy called “annotated”**, which will be used for drawing boxes and text without modifying the original loaded array. **Then YOLO inference is performed directly on that image**. A key part of the design is that the script passes classes=\[class\_id] to the model prediction call. This means that only detections of the chosen class are returned, so the rest of the processing remains focused on exactly one semantic category.
+
+
+
+When **detections are returned, the script processes them in a loop**. For each detection, **the bounding-box coordinates** are read from the YOLO output. These coordinates are passed to the helper function **clamp\_box(x1, y1, x2, y2, w, h)**. The role of clamp\_box() is to ensure that the coordinates lie inside the valid image boundaries and that the resulting box is never empty. This is important because detection coordinates may be floating-point values and may sometimes slightly exceed image borders. By clamping them into safe integer pixel coordinates, the script prevents errors during cropping and drawing.
+
+
+
+After the coordinates are corrected, **the script extracts the corresponding crop from the original image and saves it as a separate PNG file into the “crops” subdirectory**. The crop filename contains useful information such as the original image name, the detection index, the class ID, and a confidence-derived number. This makes the crop files understandable and traceable even without opening the original program. At the same time, the script uses OpenCV’s rectangle-drawing function to **draw the bounding box into the annotated image copy**. It then **writes a label containing the class name** **and confidence value near that box using cv.putText()**. In this way, each accepted detection produces both a reusable cropped image and a visible annotation in the full image.
+
+
+
+After all detections in one image are processed, the script adds another text overlay to the annotated image. This final text shows the **total number of detections of the selected class in that image**, placed near the lower-left corner. Once this is done, the annotated image is saved into the “annotated” output subdirectory with a filename ending in “\_annotated.jpg”. The script also prints a short console message for each processed image containing the image name and the number of detections. After all images have been processed, the script prints a final summary including the resolved paths to the crops and annotated-image directories. This completes the batch pipeline.
+
+
+
+**RUN:**
+
+To run the batch module, a typical command is: **python cv5\_solution.py --class\_id 2 --input\_dir bmw\_100 --output\_dir car**. This means that the script will detect class 2, process all supported images in the folder bmw\_100, save object crops into car/crops, and save annotated versions of the images into car/annotated. If you want a specific box color, you can also use a command such as: python cv5\_solution.py --class\_id 0 --color 0 0 255 --output\_dir persons. Before running this script, the main initial check is whether the input folder exists and contains valid images, and whether the output location can be created.
+
+
+
+
+
+========================================================================================================================================================================================
+
+
+
+The second module, **cv5\_videostream.py**, follows the same conceptual idea but adapts it to a live or continuous source. It also starts at the standard Python entry point and calls its **main()** function. The first function used is again **parse\_args()**, but here the command-line interface is extended with stream-specific options. Besides the shared arguments such as --class\_id, --model\_size, --model, --color, --conf, --iou, --line\_thickness, and --verbose, the live module also accepts **--source for the stream or video path**, --window\_name for the display window title, --show\_fps to overlay frames per second, --headless to disable GUI display, --save\_video to write an annotated output video file, --save\_crops\_dir for optional crop saving, --save\_every\_n\_frames to control how often crops are saved, and --max\_crops\_per\_frame as a safety limit. The purpose of this expanded argument interface is to make the live pipeline flexible enough for different runtime environments.
+
+
+
+Just like the batch module, the live module uses a **clamp\_box()** helper function to ensure safe coordinates, and it also uses a **class\_name\_for(names, cid)** function to convert a class ID into a readable label. These functions play the same conceptual role as in the batch version. This consistency is important because it means the project uses the same detection semantics and safety rules in both execution modes.
+
+
+
+Inside **cv5\_videostream.py, main()** first **parses the arguments, resolves the model name, initializes YOLO, retrieves class names, normalizes the chosen class ID, and stores the annotation color**. It then **determines the source** to be opened by OpenCV. By default, the source is an **MJPEG URL intended for WSL usage, specifically “http://127.0.0.1:8080/video”**. The script then creates a cv.VideoCapture object from that source. If the source cannot be opened, the script terminates with a detailed error message explaining that the MJPEG server should be reachable and that in WSL it is better to use the stream URL rather than VideoCapture(0). This source-validation step is crucial in the live pipeline because without a valid video source the rest of the processing cannot begin.
+
+
+
+After the source is opened successfully, the live module performs runtime setup. If verbose mode is enabled, it prints the chosen model, source, class, thresholds, color, and optional save settings. It then prepares optional long-lived state: a VideoWriter object is initialized as None until the first frame is received and its size is known, the crop output directory is created if crop saving was requested, timing variables are initialized for FPS calculation, and a frame counter is set to zero. If headless mode is not enabled, the script creates an OpenCV window for live display.
+
+
+
+The core of the live module is a **while True loop** that processes one frame per iteration. At the beginning of each iteration, the script tries to read a frame from the capture source. If frame reading fails or the returned frame is empty, the loop ends. For a valid frame, the frame counter is incremented, the frame dimensions are obtained, and an annotated copy of the frame is created. Then YOLO inference is run on the frame, again with classes=\[class\_id], so only detections of the selected class are returned.
+
+
+
+T**he detection-processing logic for each frame mirrors the batch version**. The script loops over all returned boxes, increments a per-frame detection count, clamps the coordinates using clamp\_box(), reads the confidence value, draws the bounding box, and draws the class-and-confidence label on the annotated frame. If crop saving is enabled, the script may also save selected object crops into the specified crop directory. However, unlike the batch version, crop saving in the stream version is intentionally controlled more carefully. Crops are saved only every Nth frame, based on --save\_every\_n\_frames, and no more than a limited number per frame, based on --max\_crops\_per\_frame. This prevents the live mode from creating an excessive number of files too quickly.
+
+
+
+After all detections in a frame have been processed, **the live module adds the total count of detections of the chosen class to the lower-left part of the frame**. If requested, it also computes the frame-processing speed and overlays FPS near the upper-left corner. If a video output path was given and the writer has not yet been initialized, the script creates the VideoWriter only after it knows the frame width and height. After that, **each processed annotated frame can be written to the output video file**. If headless mode is not active, the annotated frame is shown in the named OpenCV window. In windowed mode, the user can quit the program by pressing q or Escape. In headless mode, no window is shown and the program runs until the source ends or the user interrupts execution externally.
+
+
+
+When the stream loop finishes, the live module performs cleanup. It releases the VideoCapture object, releases the VideoWriter if one was created, closes any display windows, and optionally prints a final “Done.” message in verbose mode. This closes the live pipeline cleanly.
+
+
+
+=======================================================================================================================================================================================
+
+
+
+From the **input perspective**, the project needs different kinds of input depending on which module is used. For the batch **module cv5\_solution.py**, the input is a **directory containing supported image files**. These images should be stored directly inside the folder given by --input\_dir, or in the **default folder named “bmw\_100”** if no input directory is specified explicitly. The folder must exist, it must contain at least one supported image file, and the images must be readable by OpenCV. **The user must also supply a valid class ID and an output directory name**.
+
+
+
+For the live module **cv5\_videostream.py**, the input is a **stream or video source passed via --source**. **By default, the script expects an MJPEG stream reachable at http://127.0.0.1:8080/video**. Therefore, the source must be available and accessible to OpenCV. If the environment does not support GUI windows, the user should also supply --headless.
+
+
+
+As for **output**, the **batch module** always produces permanent files on disk. Specifically, it **creates a base output directory given by --output\_dir**, and inside it two subdirectories: “crops” and “annotated”. The “crops” subdirectory contains PNG images corresponding to each saved detected object of the chosen class. The “annotated” subdirectory contains JPEG images corresponding to the original inputs but with drawn bounding boxes, class labels, and the total detection count. In addition, the script writes progress messages to the console and prints the final locations of these directories. The original source images are left unchanged.
+
+
+
+The **live module** produces a different kind of output. Its **primary output is the live annotated display in an OpenCV window**, showing bounding boxes, labels, detection count, and optionally FPS. If the user supplies --save\_video, the module also produces an annotated video file at the specified location. If the user supplies --save\_crops\_dir together with a positive --save\_every\_n\_frames value, it also produces sampled crop images inside the specified directory. Without these optional saving arguments, the live module may produce no permanent output files and instead function mainly as a real-time visual detector.
+
+
+
+In summary, the project should be understood as a class-specific YOLO object-detection system with two execution modes. The first mode processes a finite folder of still images and saves both cropped detections and annotated full images. The second mode processes a continuous stream or video source and displays or optionally saves the annotated result in real time. Both modules share the same basic structure: read configuration, initialize YOLO, process only the selected class, correct box coordinates, annotate detections, count them, and produce output in a form suitable for inspection.
+
+
+
+=======================================================================================================================================================================================
+
+
+
+A practical procedure for **running** the project is the following. First, make sure Python is installed and that the required libraries are available, especially ultralytics and opencv-python. Second, decide whether you want offline folder-based processing or live-stream processing. Third, choose the class ID you want to detect, for example 0 for person, 1 for bicycle, 2 for car, 3 for motorcycle, or 5 for bus. Fourth, verify that the input conditions are satisfied. For batch mode, check that the input folder exists and contains supported images. **For stream mode, check that the source URL or video path is valid and reachable**. Fifth, choose the YOLO model size or explicit model file and optionally choose the annotation color, thresholds, and other parameters.
+
+
+
+To run the batch module, a typical command is: python **cv5\_solution.py --class\_id 2 --input\_dir bmw\_100 --output\_dir car**. This means that the script will detect class 2, process all supported images in the folder bmw\_100, save object crops into car/crops, and save annotated versions of the images into car/annotated. If you want a specific box color, you can also use a command such as: python cv5\_solution.py --class\_id 0 --color 0 0 255 --output\_dir persons. Before running this script, the main initial check is whether the input folder exists and contains valid images, and whether the output location can be created.
+
+
+
+
+
+
+
+**To run the live-stream module**
+
+1\) Start the Windows camera-stream server (must be running first)
+
+&#x20;  1.1 Open Windows PowerShell
+
+&#x20;  1.2 Go to the server folder:
+
+&#x20;      cd C:\\Users\\JM\\zao-camera-stream
+
+&#x20;  1.3 Activate the Windows venv (so opencv-python + tornado are available):
+
+&#x20;      .\\.venv\\Scripts\\Activate.ps1
+
+&#x20;      (If activation is blocked, you can run directly:
+
+&#x20;       .\\.venv\\Scripts\\python.exe mjpeg\_server.py)
+
+&#x20;  1.4 Run the server:
+
+&#x20;      py mjpeg\_server.py
+
+&#x20;      Keep this PowerShell window OPEN (server must keep running)
+
+&#x20;  1.5 Quick sanity check (optional):
+
+&#x20;      Open browser: http://127.0.0.1:8080/
+
+&#x20;      You should see live video.
+
+
+
+To run the live-stream module, a typical command is: p**ython cv5\_videostream.py --class\_id 2 --source http://127.0.0.1:8080/video --show\_fps**. This means that the script will open the stream, detect class 2 in every frame, display the annotated result live, and show FPS on the image. If you want to save the processed video, you can use a command such as: python cv5\_videostream.py --class\_id 2 --source http://127.0.0.1:8080/video --save\_video out.mp4. Before running this script, the main initial check is whether the stream is actually reachable and whether the environment supports live display, or whether headless mode should be used instead.
+
+
+
+Overall, the project is a clear practical demonstration of how a modern pretrained YOLO detector can be integrated with OpenCV to create a configurable application for targeted object detection, crop extraction, visual annotation, and detection counting, both for a static image collection and for a live video stream.
+
