@@ -60,3 +60,17 @@ DU/08_neural_netw/data/
 
 # Optional: other local archives
 *.zip
+
+# --- Images ---
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.webp
+*.bmp
+*.tif
+*.tiff
+*.svg
+*.ico
+*.heic
+*.heif
