@@ -1,0 +1,29 @@
+=== Run configuration ===
+Project root: /home/musiljuraj/3rls/ZAO/DU/assignments_Final/05_FaceRecognition
+Video path: /home/musiljuraj/3rls/ZAO/DU/assignments_Final/05_FaceRecognition/input/video/fusek_face_car_01.avi
+Ground truth path: /home/musiljuraj/3rls/ZAO/DU/assignments_Final/05_FaceRecognition/input/ground_truth/eye-state.txt
+Face detection downscale factor: 0.75
+Mouth detection enabled: True
+Live preview enabled: True
+Preview every N frames: 1
+
+=== Evaluation summary ===
+Predicted labels:      533
+Ground-truth labels:   533
+Compared labels:       533
+
+Correct predictions:   441
+Accuracy [%]:          82.74
+
+Confusion-style counts:
+  open  -> open:       184
+  open  -> close:      55
+  close -> open:       37
+  close -> close:      257
+  other:               0
+
+Localization timing [ms]:
+  measured frames:     533
+  mean:                36.287
+  min:                 16.819
+  max:                 109.089

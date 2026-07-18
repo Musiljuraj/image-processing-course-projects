@@ -1,0 +1,42 @@
+[2026-04-17 16:52:02] === ZAO Assignment 05 ===
+[2026-04-17 16:52:02] Project started.
+[2026-04-17 16:52:02] 
+[2026-04-17 16:52:02] Project root: /home/musiljuraj/3rls/ZAO/DU/assignments_Final/05_FaceRecognition
+[2026-04-17 16:52:02] Video path:   /home/musiljuraj/3rls/ZAO/DU/assignments_Final/05_FaceRecognition/input/video/fusek_face_car_01.avi
+[2026-04-17 16:52:02] Cascades loaded successfully.
+[2026-04-17 16:52:02] Frontal face detector initialized.
+[2026-04-17 16:52:02] Profile face detector initialized (fallback mode).
+[2026-04-17 16:52:02] Face detection downscale factor: 0.75
+[2026-04-17 16:52:02] Eye detector initialized.
+[2026-04-17 16:52:02] Mouth/smile detector initialized.
+[2026-04-17 16:52:02] Eye-state classifier initialized.
+[2026-04-17 16:52:02] Evaluation module initialized.
+[2026-04-17 16:52:02] 
+[2026-04-17 16:52:02] Video opened successfully.
+[2026-04-17 16:52:02] Reading frames...
+[2026-04-17 16:52:02] Live preview enabled. Press 'q' or ESC to stop preview/run.
+[2026-04-17 16:52:02] 
+[2026-04-17 16:52:04] Processed frame: 30, detected faces: 1, detected eyes: 2, detected mouth: 1, eye_state: open, localization_ms: 30.410
+[2026-04-17 16:52:05] Processed frame: 60, detected faces: 1, detected eyes: 2, detected mouth: 1, eye_state: closed, localization_ms: 27.475
+[2026-04-17 16:52:06] Processed frame: 90, detected faces: 1, detected eyes: 2, detected mouth: 1, eye_state: open, localization_ms: 27.065
+[2026-04-17 16:52:07] Processed frame: 120, detected faces: 1, detected eyes: 2, detected mouth: 1, eye_state: open, localization_ms: 28.818
+[2026-04-17 16:52:08] Processed frame: 150, detected faces: 1, detected eyes: 2, detected mouth: 1, eye_state: closed, localization_ms: 27.556
+[2026-04-17 16:52:10] Processed frame: 180, detected faces: 0, detected eyes: 0, detected mouth: 0, eye_state: closed, localization_ms: 80.831
+[2026-04-17 16:52:12] Processed frame: 210, detected faces: 1, detected eyes: 2, detected mouth: 1, eye_state: closed, localization_ms: 25.115
+[2026-04-17 16:52:13] Processed frame: 240, detected faces: 1, detected eyes: 2, detected mouth: 1, eye_state: closed, localization_ms: 83.027
+[2026-04-17 16:52:15] Processed frame: 270, detected faces: 1, detected eyes: 2, detected mouth: 1, eye_state: closed, localization_ms: 26.301
+[2026-04-17 16:52:16] Processed frame: 300, detected faces: 1, detected eyes: 2, detected mouth: 0, eye_state: closed, localization_ms: 30.679
+[2026-04-17 16:52:18] Processed frame: 330, detected faces: 1, detected eyes: 2, detected mouth: 1, eye_state: closed, localization_ms: 28.568
+[2026-04-17 16:52:19] Processed frame: 360, detected faces: 1, detected eyes: 2, detected mouth: 1, eye_state: closed, localization_ms: 25.503
+[2026-04-17 16:52:21] Processed frame: 390, detected faces: 1, detected eyes: 1, detected mouth: 0, eye_state: open, localization_ms: 20.197
+[2026-04-17 16:52:23] Processed frame: 420, detected faces: 0, detected eyes: 0, detected mouth: 0, eye_state: closed, localization_ms: 87.487
+[2026-04-17 16:52:24] Processed frame: 450, detected faces: 1, detected eyes: 2, detected mouth: 1, eye_state: closed, localization_ms: 33.015
+[2026-04-17 16:52:26] Processed frame: 480, detected faces: 1, detected eyes: 2, detected mouth: 1, eye_state: open, localization_ms: 31.359
+[2026-04-17 16:52:27] Processed frame: 510, detected faces: 1, detected eyes: 2, detected mouth: 1, eye_state: closed, localization_ms: 26.259
+[2026-04-17 16:52:28] 
+[2026-04-17 16:52:28] Video reading finished.
+[2026-04-17 16:52:28] Total frames processed: 533
+[2026-04-17 16:52:28] Stored frame results:   533
+[2026-04-17 16:52:28] 
+[2026-04-17 16:52:28] Evaluation report saved to: /home/musiljuraj/3rls/ZAO/DU/assignments_Final/05_FaceRecognition/output/reports/evaluation_report.txt
+[2026-04-17 16:52:28] Run log saved to: /home/musiljuraj/3rls/ZAO/DU/assignments_Final/05_FaceRecognition/output/logs/run_log.txt

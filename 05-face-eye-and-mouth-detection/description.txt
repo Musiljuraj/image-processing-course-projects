@@ -1,0 +1,735 @@
+EYE_STATE.PY AND EVALUATION.PY — DETAILED MODULE DESCRIPTION
+
+======================================================================
+1. eye_state.py
+======================================================================
+
+Overall purpose
+---------------
+The purpose of eye_state.py is to perform the semantic interpretation stage of
+the project. The localization module has already identified the eye regions in
+the current frame, and this module takes over at exactly that point. Its task
+is to analyze those localized eye regions and decide whether the frame should
+be interpreted as representing an open-eye state or a closed-eye state.
+
+In the overall project pipeline, this module is the stage that transforms raw
+localized image regions into a meaningful frame-level label. It does not search
+for faces or eyes in the whole image. Instead, it assumes that detectors.py has
+already done the spatial localization work and has returned eye boxes in the
+full-frame coordinate system. eye_state.py then extracts the actual eye image
+content, normalizes and preprocesses it, extracts several types of visual
+evidence, converts those evidence types into scores, and finally produces one
+classification result for each eye and one overall classification result for
+the whole frame.
+
+Conceptually, this module answers the question:
+“What does the currently localized eye region visually suggest about eye
+openness?”
+
+Its classification logic is heuristic and interpretable. It is not based on a
+black-box trained model. Instead, it combines several intuitive sources of
+evidence:
+- darkness distribution inside the eye region,
+- shape and placement of dark blobs after thresholding,
+- presence of circular structures compatible with iris/pupil evidence,
+- combined confidence scoring,
+- frame-level aggregation across one or more detected eyes.
+
+This makes the whole module readable as a step-by-step reasoning chain from
+image crop to final label.
+
+Internal structure
+------------------
+The module is organized into a sequence of logical layers, each responsible for
+a different stage of the decision process.
+
+1. Parameter configuration
+   This section defines all classifier constants in one place. These constants
+   determine the expected eye geometry, preprocessing settings, thresholding
+   behavior, blob-quality expectations, Hough-circle settings, decision
+   thresholds, and frame-level aggregation thresholds. This section acts as the
+   tuning layer of the module.
+
+2. Debug bookkeeping
+   This section defines optional counters used for development-time inspection.
+   It does not affect classification when debugging is disabled.
+
+3. Geometric and utility helpers
+   This section contains small reusable low-level utilities needed by later
+   stages, such as box clamping and soft scoring.
+
+4. ROI extraction and preprocessing
+   This section converts a detected eye box into a stable analysis image. It
+   extracts the eye crop, normalizes it to a fixed size, trims it to the most
+   relevant vertical band, improves contrast, and smooths noise.
+
+5. Threshold-based evidence extraction
+   This section analyzes dark structures in the eye image after binary
+   thresholding. It tries to identify whether there is a plausible dark blob
+   consistent with pupil/iris evidence.
+
+6. Circle-based evidence extraction
+   This section uses Hough-circle detection to search for circular structures
+   that may correspond to visible iris or pupil evidence.
+
+7. Score combination
+   This section transforms the raw evidence measurements into normalized support
+   scores and combines them into one eye-open score.
+
+8. Eye-level classification
+   This section decides whether one individual eye should be labeled open or
+   closed based on the combined evidence.
+
+9. Frame-level public interface
+   This section combines one or more eye-level results into a final frame-level
+   label and exposes the main public function used by the rest of the project.
+
+Purpose of each logical part and function
+-----------------------------------------
+
+A. Parameter configuration
+--------------------------
+This logical part contains the constants that define how the classifier behaves.
+
+- EYE_ROI_PADDING_RATIO
+  Expands the eye crop slightly around the detector box so classification is not
+  based on an overly tight crop.
+
+- EYE_NORMALIZED_WIDTH / EYE_NORMALIZED_HEIGHT
+  Define the standard analysis size for all eye ROIs. This is crucial because
+  later thresholds are based on a consistent normalized geometry.
+
+- EYE_ANALYSIS_TOP_RATIO / EYE_ANALYSIS_BOTTOM_RATIO
+  Define the central vertical band of the normalized eye ROI that should be
+  retained for analysis. This suppresses irrelevant structure above and below
+  the actual eye opening.
+
+- EYE_GAUSSIAN_KERNEL_SIZE / EYE_MEDIAN_BLUR_SIZE
+  Control smoothing for preprocessing and circle detection.
+
+- DARK_RATIO_* constants
+  Define the preferred proportion of dark pixels in the thresholded eye region.
+
+- BLOB_* constants
+  Define what kind of dark blob is considered plausible: how large it should
+  be, how centrally placed it should be, how elongated it may be, and how dense
+  it should be within its own bounding region.
+
+- HOUGH_* constants
+  Control the Hough-circle detection settings used to find circular iris/pupil
+  evidence.
+
+- CIRCLE_OPEN_SCORE_THRESHOLD, THRESHOLD_ONLY_OPEN_THRESHOLD,
+  THRESHOLD_ONLY_OPEN_SCORE_MIN, HYBRID_OPEN_SCORE_THRESHOLD,
+  HYBRID_THRESHOLD_SCORE_MIN
+  These define the decision routes by which an eye can be accepted as open.
+
+- SINGLE_EYE_FRAME_OPEN_THRESHOLD, STRONG_EYE_OPEN_THRESHOLD,
+  FRAME_MEAN_OPEN_THRESHOLD, FRAME_MIN_SUPPORT_THRESHOLD
+  These define how multiple eye-level results are aggregated into one frame-
+  level decision.
+
+- DEBUG_EYE_STATE / DEBUG_PRINT_EVERY_EYES
+  Control optional debug behavior.
+
+This whole section is the parameterized behavior definition of the classifier.
+
+B. Debug bookkeeping
+--------------------
+This part contains the DEBUG_COUNTERS dictionary. It stores running counts and
+sums related to classifier behavior:
+- how many eyes and frames were processed,
+- how often circles were found,
+- how often threshold evidence looked good,
+- how many eyes or frames were predicted open or closed,
+- how often each open-decision route was used,
+- running sums for average-score inspection.
+
+This section exists only for monitoring and tuning and is not required for
+normal classification.
+
+C. Geometric and utility helpers
+--------------------------------
+
+1. _clamp_box_to_frame(gray_frame, box)
+   Purpose:
+   Makes sure a bounding box fits safely inside valid image coordinates.
+
+   Why it exists:
+   Detector boxes or padded boxes may partially leave the image. Without
+   clamping, array slicing could become invalid or inconsistent.
+
+   Role in the module:
+   It protects the ROI extraction stage and makes eye cropping robust near image
+   borders.
+
+2. _triangular_score(value, center, tolerance)
+   Purpose:
+   Converts a raw numerical feature into a soft score based on closeness to an
+   expected target value.
+
+   Why it exists:
+   Many visual features are not simply “good” or “bad”; instead, they are best
+   when they are near a preferred value and become less useful when too small
+   or too large.
+
+   Role in the module:
+   It is used repeatedly when turning visual measurements into threshold-side
+   support scores.
+
+D. Optional debug-counter helpers
+---------------------------------
+
+3. _update_eye_debug_counters(...)
+   Purpose:
+   Updates the development-time statistics after one eye has been classified.
+
+   What it records:
+   - evidence frequencies,
+   - decision-source usage,
+   - running sums of important scores and measurements.
+
+   Role in the module:
+   Helps inspect how the classifier behaves across many eyes without changing
+   the actual decision logic.
+
+4. _update_frame_debug_counters(frame_label, eye_count)
+   Purpose:
+   Updates the development-time statistics after one frame-level decision.
+
+   What it records:
+   - number of processed frames,
+   - how often no eyes were available,
+   - how often frames were classified open or closed.
+
+   Role in the module:
+   Gives a coarse frame-level view of classifier behavior during debugging.
+
+E. ROI extraction and preprocessing
+-----------------------------------
+
+5. extract_eye_roi(gray_frame, eye_box, padding_ratio=EYE_ROI_PADDING_RATIO)
+   Purpose:
+   Extracts the grayscale image region corresponding to one eye.
+
+   Internal logic:
+   - expands the detector box slightly using padding,
+   - clamps the padded box to the frame,
+   - slices the image to produce the eye ROI.
+
+   Role in the module:
+   It is the first visual-data extraction step after receiving a detected eye
+   box from the localization module.
+
+6. normalize_eye_roi(eye_roi)
+   Purpose:
+   Resizes the extracted eye ROI to a fixed standard size.
+
+   Why it matters:
+   Later thresholds, distances, ratios and Hough settings are meaningful only
+   if all eyes are analyzed in one normalized coordinate system.
+
+7. crop_eye_analysis_band(normalized_eye_roi)
+   Purpose:
+   Keeps only the central vertical band of the normalized eye ROI.
+
+   Why it matters:
+   The upper eyebrow region and lower cheek-like texture can create irrelevant
+   dark structure. The classifier wants to focus on the region where actual
+   pupil/iris evidence is most likely to appear.
+
+8. preprocess_eye_roi(eye_roi)
+   Purpose:
+   Runs the full preprocessing chain.
+
+   Internal logic:
+   - normalize the ROI,
+   - crop the central analysis band,
+   - equalize histogram,
+   - apply Gaussian blur.
+
+   Role in the module:
+   Produces the stable visual representation on which all evidence extraction
+   is based.
+
+F. Threshold-based evidence extraction
+--------------------------------------
+
+9. threshold_eye_roi(preprocessed_eye_roi)
+   Purpose:
+   Converts the preprocessed grayscale eye ROI into a binary mask of dark
+   structures.
+
+   Internal logic:
+   - applies inverted Otsu thresholding,
+   - performs morphological opening to remove small noise fragments.
+
+   Role in the module:
+   Creates the binary image used for connected-component analysis.
+
+10. compute_threshold_evidence(binary_eye_roi)
+    Purpose:
+    Extracts structured measurements from the binary eye mask.
+
+    Internal logic:
+    - measures overall dark-pixel ratio,
+    - runs connected-component analysis,
+    - evaluates each dark blob using size, position, aspect ratio and fill,
+    - keeps the strongest blob candidate,
+    - decides whether that blob qualifies as a plausible pupil-like blob.
+
+    Output meaning:
+    This function returns the main threshold-side evidence dictionary, which is
+    later turned into a normalized threshold score.
+
+    Role in the module:
+    It is the main structural analysis stage for dark-region evidence.
+
+G. Circle-based evidence extraction
+-----------------------------------
+
+11. detect_iris_circle(preprocessed_eye_roi)
+    Purpose:
+    Searches for circular structures that may correspond to visible iris or
+    pupil evidence.
+
+    Internal logic:
+    - applies median blur,
+    - derives Hough parameters from ROI geometry,
+    - runs HoughCircles,
+    - evaluates each circle candidate using center proximity and plausible
+      radius,
+    - keeps the strongest circle score,
+    - records whether a plausible circle was actually found.
+
+    Role in the module:
+    Provides the strongest direct positive cue for an open eye because a visible
+    iris/pupil-like circular structure is a strong sign of openness.
+
+H. Score combination
+--------------------
+
+12. compute_threshold_score(threshold_evidence)
+    Purpose:
+    Converts the threshold-side evidence dictionary into one continuous support
+    score.
+
+    Internal logic:
+    - scores dark-ratio suitability,
+    - scores blob-size suitability,
+    - scores blob centrality,
+    - scores blob compactness,
+    - scores blob fill quality,
+    - combines them by weighted sum,
+    - penalizes the result if the blob fails the basic “good pupil blob” test.
+
+    Role in the module:
+    Transforms multiple raw threshold-side measurements into one interpretable
+    confidence value.
+
+13. compute_eye_open_score(threshold_score, circle_evidence)
+    Purpose:
+    Combines threshold-based and circle-based evidence into one final eye-open
+    score.
+
+    Internal logic:
+    - if a plausible circle exists, circle evidence receives stronger weight,
+    - otherwise threshold evidence remains dominant.
+
+    Role in the module:
+    Produces the final per-eye continuous support value used by the decision
+    logic.
+
+I. Eye-level classification
+---------------------------
+
+14. classify_single_eye(gray_frame, eye_box)
+    Purpose:
+    Produces the final label and open score for one individual eye.
+
+    Internal logic:
+    - extracts the eye ROI,
+    - preprocesses it,
+    - computes threshold evidence,
+    - computes circle evidence,
+    - computes threshold score and open score,
+    - applies decision rules for three positive routes:
+      a) circle-based open,
+      b) hybrid open,
+      c) threshold-only open,
+    - otherwise keeps the default label closed.
+
+    Output:
+    Returns:
+    - the predicted eye-level label,
+    - the final eye-level open score.
+
+    Role in the module:
+    This is the full classification pipeline for a single detected eye.
+
+J. Frame-level public interface
+-------------------------------
+
+15. classify_eye_state(gray_frame, face_parts)
+    Purpose:
+    Produces the final frame-level eye-state label used by main.py and later by
+    the evaluation stage.
+
+    Internal logic:
+    - reads the current eye boxes from face_parts,
+    - if no eyes exist, returns closed,
+    - classifies each eye independently using classify_single_eye,
+    - aggregates the eye-level labels and scores,
+    - applies special logic for one-eye frames,
+    - applies multi-eye aggregation logic for normal frames.
+
+    Aggregation meaning:
+    The frame can become open if:
+    - both eyes support openness sufficiently,
+    - one eye is strongly open and mean support is acceptable,
+    - or overall mean support is strong enough.
+
+    Role in the module:
+    This is the public entry point of eye_state.py and the final semantic output
+    stage before results are stored in main.py.
+
+Summary of the module’s role
+----------------------------
+eye_state.py is the classification core of the project. It converts localized
+eye regions into frame-level semantic labels. Its internal flow is highly
+structured:
+localized eye box -> eye ROI -> normalized/preprocessed eye image -> threshold
+evidence + circle evidence -> score combination -> eye-level decision -> frame-
+level aggregation.
+
+That makes it the module responsible for the actual interpretation of whether
+the observed eyes appear open or closed.
+
+
+======================================================================
+2. evaluation.py
+======================================================================
+
+Overall purpose
+---------------
+The purpose of evaluation.py is to perform the final analytical and reporting
+stage of the project after video processing has finished.
+
+By the time this module is called, the main processing loop has already:
+- read the video frame by frame,
+- localized the relevant face structures,
+- classified frame-level eye state,
+- stored one structured result record per frame.
+
+evaluation.py takes those stored results and converts them into an overall
+summary of performance and runtime behavior.
+
+Conceptually, this module answers the questions:
+- What was predicted across the processed frames?
+- What is the reference sequence from ground truth?
+- How much of the two sequences can actually be compared?
+- How accurate were the predictions?
+- What types of classification outcomes occurred?
+- How fast was the localization stage?
+
+This module therefore functions as the final reporting layer of the whole
+project. It does not perform image analysis. It performs sequence handling,
+statistical counting, and report formatting.
+
+Internal structure
+------------------
+The module is organized as a linear evaluation pipeline.
+
+1. Label normalization
+   Converts textual labels into a canonical evaluation vocabulary.
+
+2. Input loading and extraction
+   Reads ground-truth labels from disk and extracts predicted labels and timing
+   values from stored frame results.
+
+3. Sequence alignment
+   Makes the prediction sequence and ground-truth sequence comparable even if
+   their lengths differ.
+
+4. Accuracy and confusion-style statistics
+   Computes how many predictions were correct and how the binary label pairs are
+   distributed.
+
+5. Timing statistics
+   Computes simple descriptive statistics over the stored localization times.
+
+6. Complete evaluation pipeline
+   Connects the previous steps into one summary-producing function.
+
+7. Summary formatting and output
+   Converts the summary into readable text, prints it, and saves it to disk.
+
+This makes evaluation.py a highly modular but still straightforward post-run
+analysis layer.
+
+Purpose of each logical part and function
+-----------------------------------------
+
+A. Label normalization
+----------------------
+
+1. normalize_eye_state_label(label)
+   Purpose:
+   Converts input labels into the canonical evaluation vocabulary.
+
+   Canonical labels:
+   - "open"
+   - "close"
+
+   Internal logic:
+   - turns None into "unknown",
+   - strips whitespace,
+   - lowercases the text,
+   - maps accepted open variants to "open",
+   - maps accepted closed variants to "close",
+   - leaves unknown labels unchanged.
+
+   Why it matters:
+   The evaluation stage should not fail or produce misleading counts just
+   because labels differ slightly in formatting or wording.
+
+   Role in the module:
+   It standardizes both predictions and ground truth before comparison.
+
+B. Input loading and extraction
+-------------------------------
+
+2. load_ground_truth(ground_truth_path)
+   Purpose:
+   Reads the reference label sequence from a text file.
+
+   Expected file structure:
+   - one label per line,
+   - empty lines ignored.
+
+   Internal logic:
+   - opens the file,
+   - iterates through lines in order,
+   - strips whitespace,
+   - skips empty lines,
+   - normalizes each label,
+   - appends it to the ground-truth sequence.
+
+   Role in the module:
+   Builds the reference sequence used for final comparison.
+
+3. extract_predicted_labels(frame_results)
+   Purpose:
+   Extracts the predicted frame-level eye-state labels from the list of stored
+   frame results.
+
+   Internal logic:
+   - iterates through the frame-results list in frame order,
+   - reads the "eye_state" field from each record,
+   - normalizes the label,
+   - appends it to the predicted sequence.
+
+   Role in the module:
+   Converts the stored per-frame outputs of the main pipeline into the label
+   sequence used by evaluation.
+
+4. extract_localization_times(frame_results)
+   Purpose:
+   Extracts stored localization timing values from the frame-results list.
+
+   Internal logic:
+   - iterates through frame results,
+   - reads "localization_time_ms",
+   - ignores missing values,
+   - converts valid values to float,
+   - appends them to a timing list.
+
+   Role in the module:
+   Supplies the numerical data needed for localization runtime statistics.
+
+C. Sequence alignment
+---------------------
+
+5. align_label_sequences(predicted_labels, ground_truth_labels)
+   Purpose:
+   Makes both label sequences directly comparable by truncating them to the same
+   length.
+
+   Why it is needed:
+   The prediction sequence and ground-truth sequence may differ in length if the
+   run stopped early or if the source files are not perfectly matched.
+
+   Internal logic:
+   - computes the minimum length,
+   - truncates both sequences to that shared length,
+   - returns both the aligned sequences and the original counts.
+
+   Role in the module:
+   Establishes the exact data range over which evaluation is valid.
+
+D. Accuracy and confusion-style statistics
+------------------------------------------
+
+6. compute_confusion_counts(predicted_labels, ground_truth_labels)
+   Purpose:
+   Computes detailed pairwise outcome counts for the binary task.
+
+   Count meanings:
+   - open_as_open   = ground truth open, predicted open
+   - open_as_close  = ground truth open, predicted close
+   - close_as_open  = ground truth close, predicted open
+   - close_as_close = ground truth close, predicted close
+   - other          = any unexpected label combination
+
+   Internal logic:
+   - initializes all counters,
+   - iterates through paired labels,
+   - updates the appropriate count depending on the actual/predicted pair.
+
+   Role in the module:
+   Gives a more detailed breakdown than accuracy alone.
+
+7. compute_accuracy(predicted_labels, ground_truth_labels)
+   Purpose:
+   Computes the overall frame-level accuracy.
+
+   Internal logic:
+   - computes the comparable sequence length,
+   - handles the zero-length case safely,
+   - counts exact matches across the aligned sequence,
+   - converts the fraction into percent form.
+
+   Output:
+   Returns:
+   - correct_count,
+   - compared_count,
+   - accuracy_percent.
+
+   Role in the module:
+   Produces the main high-level performance metric.
+
+E. Timing statistics
+--------------------
+
+8. compute_timing_stats(localization_times_ms)
+   Purpose:
+   Computes simple descriptive statistics over localization-time measurements.
+
+   Output:
+   - count,
+   - mean_ms,
+   - min_ms,
+   - max_ms.
+
+   Internal logic:
+   - handles the empty case safely,
+   - otherwise computes count, arithmetic mean, minimum and maximum.
+
+   Role in the module:
+   Summarizes how expensive the localization stage was over the run.
+
+F. Complete evaluation pipeline
+-------------------------------
+
+9. evaluate_results(frame_results, ground_truth_path)
+   Purpose:
+   Serves as the main public evaluation entry point.
+
+   Internal logic:
+   - loads ground truth,
+   - extracts predicted labels,
+   - extracts localization times,
+   - aligns label sequences,
+   - computes accuracy,
+   - computes confusion counts,
+   - computes timing statistics,
+   - assembles everything into one summary dictionary.
+
+   Role in the module:
+   Connects all lower-level evaluation helpers into one function that main.py
+   can call directly after frame processing finishes.
+
+G. Summary formatting and output
+--------------------------------
+
+10. format_evaluation_summary(summary)
+    Purpose:
+    Converts the structured summary dictionary into one readable multiline text
+    block.
+
+    Internal logic:
+    - unpacks the nested substructures,
+    - constructs a fixed ordered list of human-readable lines,
+    - joins the lines into one final string.
+
+    Role in the module:
+    Creates the canonical textual representation of evaluation results.
+
+11. print_evaluation_summary(summary)
+    Purpose:
+    Prints the formatted evaluation summary to standard output.
+
+    Internal logic:
+    - delegates formatting to format_evaluation_summary,
+    - prints the returned text.
+
+    Role in the module:
+    Gives the user immediate visual access to the evaluation results in the
+    console.
+
+12. save_evaluation_report(summary, report_path, extra_lines=None)
+    Purpose:
+    Saves the formatted evaluation summary into a report file.
+
+    Internal logic:
+    - formats the summary,
+    - optionally prepends additional header lines,
+    - writes the final text to disk.
+
+    Why extra_lines exist:
+    They allow run-configuration details to be included before the evaluation
+    block, which makes the saved report self-descriptive.
+
+    Role in the module:
+    Produces the persistent final report artifact of the evaluation stage.
+
+Summary of the module’s role
+----------------------------
+evaluation.py is the final analytical and reporting module of the project. It
+takes the outputs already produced by the processing pipeline and turns them
+into measurable final results. Its internal flow is straightforward and highly
+modular:
+normalize labels -> load/extract sequences -> align sequences -> compute
+accuracy and confusion counts -> compute timing statistics -> assemble summary
+-> format, print and save report.
+
+That makes it the module responsible for validating and documenting the overall
+behavior of the complete project run.
+
+
+======================================================================
+Combined relationship between the two modules
+======================================================================
+
+eye_state.py and evaluation.py operate at two different semantic levels of the
+same project.
+
+- eye_state.py is an online per-frame interpretation module.
+  It works during the video-processing loop and decides the frame-level
+  eye-state label from localized eye regions.
+
+- evaluation.py is an offline post-run analysis module.
+  It works after the processing loop ends and evaluates the sequence of labels
+  produced by eye_state.py against the ground truth.
+
+Their relationship is therefore sequential and complementary:
+
+1. detectors.py localizes the eyes,
+2. eye_state.py interprets those localized eye regions and produces frame-level
+   predictions,
+3. main.py stores those predictions in structured frame-result records,
+4. evaluation.py extracts those stored predictions and measures their quality.
+
+So, eye_state.py is responsible for producing the frame-level semantic decision,
+while evaluation.py is responsible for analyzing and reporting how good those
+decisions were across the whole run.
