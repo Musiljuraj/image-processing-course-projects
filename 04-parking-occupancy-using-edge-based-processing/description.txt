@@ -1,0 +1,685 @@
+DETAILED MODULE DESCRIPTION: inspect_best_config.py and debug_utils.py
+
+================================================================================
+1. inspect_best_config.py
+================================================================================
+
+OVERALL PURPOSE OF THE MODULE
+
+This module is a dedicated inspection script whose role is very different from
+the role of the main exhaustive-search pipeline.
+
+The main search pipeline is designed to answer the question:
+“Which configuration performs best over the full dataset?”
+
+This inspection script is designed to answer the complementary question:
+“What does that best configuration actually do on one concrete test image?”
+
+So this module exists to bridge the gap between numerical optimization and
+human understanding. The search pipeline can identify the best-performing
+combination of preprocessing, edge detection, and classification settings, but
+those results are still abstract until they are visually inspected on a real
+image. This script performs exactly that inspection.
+
+Its full purpose is to:
+- load the best-ranked configuration already saved in results.csv
+- reconstruct that configuration into the same nested structure used by the
+  processing pipeline
+- choose one image from the dataset
+- run that one image through the same full pipeline as the main project
+- save inspection artifacts such as overlay images, processed ROI patches,
+  edge maps, and a readable per-space summary
+- print a compact terminal summary of what happened
+
+This module is therefore not part of the exhaustive search itself. It is a
+post-search analysis tool. It uses the results of the search to make the best
+configuration understandable and inspectable.
+
+-------------------------------------------------------------------------------
+INTERNAL STRUCTURE OF THE MODULE
+-------------------------------------------------------------------------------
+
+The module is structured in three conceptual layers:
+
+1. Small parsing / reconstruction helpers
+   These functions rebuild configuration values from the flat CSV format into
+   the structured dictionaries expected by the pipeline.
+
+2. Output naming and summary-writing helpers
+   These functions define how saved inspection outputs are organized and how
+   readable summaries are written to disk.
+
+3. One top-level orchestration function: main()
+   This function coordinates the whole inspection workflow from path setup to
+   final saved outputs and printed summary.
+
+This layered structure is very intentional:
+- low-level parsing is separated from filesystem logic
+- filesystem logic is separated from the main execution flow
+- the main function remains readable because repeated helper logic is extracted
+
+-------------------------------------------------------------------------------
+PURPOSE OF EACH FUNCTION
+-------------------------------------------------------------------------------
+
+1. parse_bool_string(value)
+
+Purpose:
+This helper converts a textual boolean value loaded from CSV into a real Python
+bool.
+
+Why it exists:
+The ranked results are saved in CSV form, and CSV stores everything as text.
+That means values like the Canny parameter l2gradient are read back as strings,
+not as actual booleans. The processing pipeline, however, expects real Python
+bool values. So this helper reconstructs those values reliably.
+
+What it does logically:
+- normalizes the input string by stripping whitespace and lowercasing it
+- accepts several common truthy variants such as "true", "1", "yes"
+- accepts several common falsy variants such as "false", "0", "no"
+- raises a clear error if the value cannot be interpreted as boolean
+
+Its structural role:
+This function belongs to the configuration-reconstruction layer. It makes sure
+that the configuration loaded from CSV becomes pipeline-ready again.
+
+---
+
+2. parse_optional_int(value)
+
+Purpose:
+This helper converts a CSV field into either an integer or None.
+
+Why it exists:
+Some configuration fields may be intentionally empty in the CSV. The most
+important example is kernel_size when the preprocessing filter is "none".
+In such a case, the value should not become an invalid integer conversion
+attempt. It should become None.
+
+What it does logically:
+- if the field is empty or missing, returns None
+- otherwise converts the text into an integer
+
+Its structural role:
+This function supports configuration reconstruction by handling optional numeric
+fields correctly.
+
+---
+
+3. load_best_result_from_csv(csv_path)
+
+Purpose:
+This is the key reconstruction helper of the whole script. It loads the ranked
+results CSV and rebuilds the best configuration in the same nested dictionary
+structure used by the rest of the project.
+
+Why it exists:
+The main search pipeline saves results in a flattened format because CSV is
+tabular. But the processing modules do not work with flat CSV rows. They work
+with structured dictionaries such as:
+- preprocessing_config
+- edge_detection_config
+- classification_evaluation_config
+
+So this function reverses the flattening. It takes the first ranked row in the
+CSV and reconstructs a complete “best_result” object that looks like a normal
+experiment result record again.
+
+What it does logically:
+- validates that the CSV file exists
+- reads all CSV rows as dictionaries
+- validates that at least one row exists
+- assumes the first row is the best one because the CSV is already ranked
+- rebuilds preprocessing_config from filter_name and kernel_size
+- rebuilds edge_detection_config according to detector_name:
+  - Sobel branch reconstructs ksize and threshold
+  - Canny branch reconstructs threshold1, threshold2, aperture_size, and
+    l2gradient
+- rebuilds classification_evaluation_config from threshold and label fields
+- packages metric and ranking information together with the reconstructed config
+
+Its structural role:
+This is the entry bridge between saved search results and reusable pipeline
+configuration. Without this function, the inspection script would not know how
+to reuse the best-ranked setup.
+
+---
+
+4. build_processed_subdir_name(preprocessing_config)
+
+Purpose:
+This helper creates a short descriptive folder name for saved preprocessing
+outputs.
+
+Why it exists:
+The script saves processed ROI patches to disk, and those outputs should be
+organized in a way that immediately reveals which preprocessing configuration
+produced them.
+
+What it does logically:
+- normalizes the filter name
+- returns "none" if the filter is none
+- otherwise returns a compact descriptive string such as:
+  - gaussian_k5
+  - median_k3
+
+Its structural role:
+This function belongs to the output-organization layer. It does not affect the
+pipeline logic at all. It only makes saved inspection outputs easier to browse
+and understand.
+
+---
+
+5. build_edge_subdir_name(edge_records)
+
+Purpose:
+This helper creates a short descriptive folder name for saved edge maps.
+
+Why it exists:
+Edge maps are most useful when their folder name immediately reveals which edge
+detector and detector parameters created them.
+
+What it does logically:
+- handles the empty-list case defensively
+- reads the used edge-detection config from the first edge record
+- if the detector is Canny, builds a string containing threshold1, threshold2,
+  and aperture size
+- if the detector is Sobel, builds a string containing kernel size and
+  threshold
+- otherwise falls back to the detector name
+
+Its structural role:
+Like the previous helper, this function belongs purely to the inspection-output
+organization layer. It makes the saved inspection directory self-descriptive.
+
+---
+
+6. save_evaluation_summary_text(image_evaluation, output_path)
+
+Purpose:
+This helper writes a readable per-space inspection report for the selected
+image.
+
+Why it exists:
+Image files are useful for visual inspection, but they are not enough on their
+own. To really understand where the best configuration succeeds or fails, it is
+valuable to also have a compact textual summary of the statistics and outcomes
+for each parking space.
+
+What it does logically:
+- ensures the output directory exists
+- extracts evaluated records, confusion counts, accuracy, and number of samples
+- writes an image-level summary header:
+  - number of samples
+  - accuracy
+  - TP, TN, FP, FN
+- writes one line per parking space containing:
+  - space index
+  - edge count
+  - ROI pixel count
+  - edge ratio
+  - predicted label
+  - ground-truth label
+  - evaluation outcome
+
+Its structural role:
+This function creates the main textual artifact of the inspection workflow. It
+translates the in-memory evaluation result into a stable, readable report file.
+
+---
+
+7. main()
+
+Purpose:
+This is the top-level orchestration function of the whole module. It performs
+the complete one-image inspection workflow using the best-ranked configuration.
+
+Why it exists:
+The module’s entire purpose is expressed here. All helper functions serve this
+single main routine.
+
+The structure of main() can be understood as a sequence of clearly separated
+logical blocks:
+
+A. Configuration block
+This is the user-adjustable section of the script.
+It defines:
+- which test image should be inspected
+- which artifacts should be saved
+- whether a GUI preview window should be opened
+
+Why this block matters:
+It makes the script easy to customize without changing the processing logic.
+
+B. Path-definition block
+This block computes all important project-relative paths:
+- project root
+- data directory
+- parking map path
+- test image directory
+- outputs directory
+- results directory
+- inspection output root
+- results.csv path
+
+Why this block matters:
+It centralizes all filesystem assumptions and keeps later logic clean.
+
+C. Input-validation block
+This block verifies:
+- the parking map file exists
+- the test image directory exists
+- results.csv exists
+
+Why this block matters:
+It ensures the inspection script fails early and clearly if the necessary inputs
+or prior search outputs are missing.
+
+D. Best-configuration loading block
+This block calls load_best_result_from_csv(...) and extracts:
+- preprocessing_config
+- edge_detection_config
+- classification_evaluation_config
+
+Why this block matters:
+It reconstructs the best-known pipeline setup so it can be reused exactly.
+
+E. Dataset-loading block
+This block loads:
+- parking_map
+- test_cases
+
+It also validates:
+- that at least one test image exists
+- that debug_image_index is valid
+
+Why this block matters:
+It ensures the selected inspection case is well defined and available.
+
+F. Terminal summary block
+This block prints:
+- project root
+- selected image name
+- best rank
+- experiment index
+- accuracy
+- best preprocessing config
+- best edge-detection config
+- best classification/evaluation config
+
+Why this block matters:
+It immediately tells the user exactly what is being inspected.
+
+G. Overlay-generation block
+This block:
+- creates the output directory for the selected image
+- draws the parking map overlay on the full source image
+- optionally saves that overlay
+
+Why this block matters:
+It provides the full-scene reference view that connects parking-space numbering
+to actual image locations.
+
+H. ROI-extraction block
+This block extracts one ROI record per parking space from the selected image.
+
+Why this block matters:
+It starts the per-space pipeline on the selected image.
+
+I. Optional raw-ROI saving block
+This block optionally saves the raw ROI patches before preprocessing.
+
+Why this block matters:
+It gives direct visibility into the perspective-corrected parking-space patches.
+
+J. Preprocessing block
+This block preprocesses all ROI records using the best preprocessing config.
+
+Why this block matters:
+It reproduces the exact preprocessing stage selected by the exhaustive search.
+
+K. Optional grayscale and processed-output saving blocks
+These blocks optionally save:
+- grayscale ROI patches
+- processed ROI patches
+
+Why they matter:
+They expose intermediate image representations that are otherwise only internal
+to the pipeline.
+
+L. Edge-detection block
+This block runs edge detection for all preprocessed ROIs using the best
+edge-detection configuration.
+
+Why this block matters:
+It creates the edge maps and edge statistics that drive the final
+classification.
+
+M. Optional edge-map saving block
+This block optionally saves one edge image per parking space.
+
+Why this matters:
+It makes the core detector output visually inspectable.
+
+N. Ground-truth loading, classification, and evaluation block
+This block:
+- loads the ground-truth labels for the selected image
+- classifies all edge records
+- evaluates those predictions against ground truth
+
+Why this block matters:
+It turns the inspection workflow into not just a visualization tool, but also a
+performance-understanding tool.
+
+O. Optional text-summary saving block
+This block writes the human-readable inspection summary.
+
+Why this matters:
+It provides the main structured report for manual analysis of successes and
+errors.
+
+P. Final terminal-report block
+This block prints:
+- TP, TN, FP, FN
+- image-level accuracy
+- a preview of the first evaluated records
+
+Why this matters:
+It provides a quick concise summary without opening saved files.
+
+Q. Optional GUI-preview block
+This block shows the overlay image in an OpenCV window if requested.
+
+Why this matters:
+It supports interactive inspection in addition to saved outputs.
+
+R. Entry-point guard
+This final block runs main() only when the script is executed directly.
+
+Why this matters:
+It preserves normal Python script/module behavior.
+
+-------------------------------------------------------------------------------
+SUMMARY OF THE MODULE’S INTERNAL LOGIC
+-------------------------------------------------------------------------------
+
+inspect_best_config.py is a post-search inspection script. Internally, it works
+as a controlled re-execution of the main pipeline on exactly one selected image,
+using exactly one configuration: the best-ranked one from results.csv.
+
+Its internal logic can be summarized as:
+1. reconstruct best configuration from saved CSV
+2. load dataset and select one image
+3. rerun the pipeline on that image
+4. save visual and textual inspection artifacts
+5. print a concise interpretation-friendly summary
+
+Its key design idea is that it does not invent new processing logic. It reuses
+the already established project pipeline, but narrows the scope from
+“many configurations over many images” to “one best configuration on one
+selected image”.
+
+================================================================================
+2. debug_utils.py
+================================================================================
+
+OVERALL PURPOSE OF THE MODULE
+
+This module is a utility module that supports visual debugging and saving of
+intermediate processing outputs. Its job is not to perform the main image
+analysis logic. Instead, its job is to make that logic visible and inspectable.
+
+In the overall project, many important intermediate results exist:
+- the original parking-lot image with parking-space boundaries
+- raw ROI patches
+- grayscale ROI patches
+- processed ROI patches
+- edge maps
+
+Those outputs are extremely useful when debugging or interpreting the pipeline,
+but they are secondary to the main algorithm itself. If that visualization and
+saving logic were mixed directly into the main processing modules, those
+modules would become cluttered and harder to understand.
+
+So this module exists to isolate the debugging / inspection support layer from
+the real processing pipeline.
+
+Its overall purpose is to:
+- draw the parking-space map over a source image
+- save a single overlay image to disk
+- generically save any chosen image representation from a list of records to
+  disk, as long as that representation is stored under a known key
+
+-------------------------------------------------------------------------------
+INTERNAL STRUCTURE OF THE MODULE
+-------------------------------------------------------------------------------
+
+The module is structurally simple and intentionally generic. It contains three
+helpers:
+
+1. draw_parking_map(...)
+   A visualization helper for full-scene understanding.
+
+2. save_overlay_image(...)
+   A small single-image save helper.
+
+3. save_processed_patches(...)
+   A generic batch saver for per-space images stored in record dictionaries.
+
+This is a very compact module, but each function has a distinct role:
+- one function creates a visualization
+- one function saves one image
+- one function saves many per-space images in a generic reusable way
+
+-------------------------------------------------------------------------------
+PURPOSE OF EACH FUNCTION
+-------------------------------------------------------------------------------
+
+1. draw_parking_map(image, parking_map)
+
+Purpose:
+This function creates a visual reference image showing all parking-space
+polygons drawn on top of the original parking-lot image.
+
+Why it exists:
+The parking map is central to the project, but by itself it is just a list of
+coordinates. To verify that the geometry is correct, it is very useful to draw
+those polygons directly on the original image. This makes it easy to check:
+- whether the parking map aligns correctly with the visible parking spaces
+- whether the numbering of spaces matches expectations
+- how the full-scene image relates to the later ROI patches
+
+What it does logically:
+- copies the input image so the original is not modified
+- iterates over all parking-space polygons in map order
+- converts polygon coordinates to int32 for OpenCV drawing
+- draws each polygon as a green closed outline
+- writes the 1-based parking-space index near the first polygon point
+- returns the visualization image
+
+Purpose of its internal logical parts:
+
+A. Image-copy step
+This ensures debug drawing is non-destructive. The original source image may
+still be needed elsewhere in its unchanged form.
+
+B. Polygon iteration step
+This keeps the drawing order consistent with project-wide parking-space
+numbering.
+
+C. Coordinate conversion step
+This adapts the geometry format to OpenCV drawing requirements.
+
+D. Polygon-outline drawing step
+This is the main geometric visualization layer.
+
+E. Label-position selection step
+This chooses a lightweight anchor point for placing the space number.
+
+F. Text-drawing step
+This makes the overlay not only geometric but also index-aware.
+
+Its structural role:
+This function provides the most important full-scene inspection visualization in
+the project.
+
+---
+
+2. save_overlay_image(image, output_path)
+
+Purpose:
+This helper saves one visualization image to disk.
+
+Why it exists:
+Saving a debug image should be safe and reusable. The caller should not have to
+reimplement:
+- path normalization
+- parent-directory creation
+- save-failure checking
+
+What it does logically:
+- converts the output path into a Path object
+- creates the parent directory if necessary
+- writes the image with cv2.imwrite(...)
+- raises a clear error if saving fails
+
+Purpose of its internal logical parts:
+
+A. Path-normalization step
+This gives the function a stable path interface regardless of how the caller
+provides the destination.
+
+B. Directory-creation step
+This ensures saving works even when the destination directory does not yet
+exist.
+
+C. Image-save step
+This performs the actual disk write.
+
+D. Error-checking step
+This converts OpenCV’s silent boolean failure mode into a clear Python
+exception.
+
+Its structural role:
+This function is the single-image save utility for overlay outputs.
+
+---
+
+3. save_processed_patches(records, output_dir, image_key)
+
+Purpose:
+This function is a generic batch saver for per-space image representations
+stored inside record dictionaries.
+
+Why it exists:
+Many stages of the project store image data in records under different keys:
+- roi_image
+- grayscale_image
+- processed_image
+- edge_image
+
+Without this generic function, the project would need multiple almost identical
+functions such as:
+- save_roi_patches(...)
+- save_grayscale_patches(...)
+- save_processed_patches(...)
+- save_edge_maps(...)
+
+That would create duplication. This function replaces all of those with one
+general mechanism.
+
+What it does logically:
+- prepares the output directory
+- handles the empty-list case safely
+- determines filename zero-padding based on number of records
+- iterates over all records
+- validates that each record contains:
+  - space_index
+  - the requested image_key
+  - a non-None image value
+- constructs filenames such as space_01.jpg
+- saves each selected image to disk
+- collects all written output paths and returns them
+
+Purpose of its internal logical parts:
+
+A. Output-directory preparation
+Ensures all saved images have a valid destination location.
+
+B. Empty-input handling
+Allows optional save flows to call the function safely even when there is
+nothing to write.
+
+C. Filename-width computation
+Makes filenames zero-padded and naturally ordered, while scaling to different
+numbers of parking spaces.
+
+D. Record-validation block
+Ensures every record contains the information needed for reliable saving.
+
+E. Image-selection block
+Chooses the exact representation to save, based on image_key.
+
+F. None-value guard
+Prevents invalid image writes when a key exists but contains no actual image.
+
+G. Filename-construction block
+Creates stable, human-readable, order-preserving filenames tied to
+space_index.
+
+H. Disk-write block
+Performs the actual image save operation.
+
+I. Error-checking block
+Turns a failed OpenCV save into a clear exception.
+
+J. Saved-path accumulation block
+Returns useful information to the caller for logging or later reuse.
+
+Its structural role:
+This function is the generic reusable batch-output writer for all per-space
+inspection artifacts.
+
+-------------------------------------------------------------------------------
+SUMMARY OF THE MODULE’S INTERNAL LOGIC
+-------------------------------------------------------------------------------
+
+debug_utils.py is the project’s inspection-support utility layer. It does not
+change, analyze, or classify images. Instead, it supports human understanding
+of the pipeline by:
+- creating a full-scene visual reference
+- saving inspection images safely
+- providing one generic mechanism for saving many different per-space image
+  representations
+
+Its internal logic is small but highly reusable:
+1. make the parking map visible on the original scene
+2. save single inspection images reliably
+3. save whole sets of per-space images generically from shared record formats
+
+Its key design idea is separation of concerns. Debugging and visualization are
+important, but they should not clutter the core analysis modules. By placing
+these helpers here, the project keeps the processing pipeline cleaner while
+still making intermediate results easy to inspect.
+
+================================================================================
+JOINT RELATIONSHIP BETWEEN THE TWO MODULES
+================================================================================
+
+These two modules work together in the project’s inspection workflow.
+
+- inspect_best_config.py is the orchestrator of post-search inspection.
+  It decides what should be inspected, when it should be saved, and how the
+  selected image should move through the full pipeline.
+
+- debug_utils.py is the support toolkit that provides the actual reusable
+  visualization and saving operations used during that inspection.
+
+So their relationship is:
+- inspect_best_config.py = workflow control and interpretation-oriented rerun
+- debug_utils.py = reusable visualization and artifact-saving support
+
+Together they form the project’s human-analysis layer:
+one module organizes the inspection procedure, and the other provides the
+practical tools that make the intermediate results visible and persistent.

@@ -1,0 +1,74 @@
+EXHAUSTIVE SEARCH SUMMARY
+========================================================================
+Total tested configurations: 144
+Total ranked results: 144
+
+BEST CONFIGURATION
+------------------------------------------------------------------------
+Rank: 1
+Experiment index: 128
+Accuracy: 0.980952
+TP: 398
+TN: 426
+FP: 6
+FN: 10
+Num samples: 840
+Num images: 15
+
+Best configuration details:
+  preprocessing_config = {'filter_name': 'median', 'kernel_size': 7}
+  edge_detection_config = {'detector_name': 'canny', 'canny': {'threshold1': 40, 'threshold2': 100, 'aperture_size': 3, 'l2gradient': False}}
+  classification_evaluation_config = {'occupancy_threshold_ratio': 0.04, 'occupied_label': 1, 'empty_label': 0}
+
+TOP 10 CONFIGURATIONS
+------------------------------------------------------------------------
+Rank   1 | Exp  128 | accuracy=0.980952 | TP=398 TN=426 FP=6 FN=10
+  preprocessing: {'filter_name': 'median', 'kernel_size': 7}
+  edge_detection: {'detector_name': 'canny', 'canny': {'threshold1': 40, 'threshold2': 100, 'aperture_size': 3, 'l2gradient': False}}
+  classification_evaluation: {'occupancy_threshold_ratio': 0.04, 'occupied_label': 1, 'empty_label': 0}
+
+Rank   2 | Exp  119 | accuracy=0.979762 | TP=401 TN=422 FP=10 FN=7
+  preprocessing: {'filter_name': 'median', 'kernel_size': 7}
+  edge_detection: {'detector_name': 'canny', 'canny': {'threshold1': 30, 'threshold2': 100, 'aperture_size': 3, 'l2gradient': False}}
+  classification_evaluation: {'occupancy_threshold_ratio': 0.04, 'occupied_label': 1, 'empty_label': 0}
+
+Rank   3 | Exp   67 | accuracy=0.978571 | TP=403 TN=419 FP=13 FN=5
+  preprocessing: {'filter_name': 'gaussian', 'kernel_size': 7}
+  edge_detection: {'detector_name': 'canny', 'canny': {'threshold1': 50, 'threshold2': 120, 'aperture_size': 3, 'l2gradient': False}}
+  classification_evaluation: {'occupancy_threshold_ratio': 0.03, 'occupied_label': 1, 'empty_label': 0}
+
+Rank   4 | Exp  111 | accuracy=0.977381 | TP=393 TN=428 FP=4 FN=15
+  preprocessing: {'filter_name': 'median', 'kernel_size': 7}
+  edge_detection: {'detector_name': 'canny', 'canny': {'threshold1': 20, 'threshold2': 100, 'aperture_size': 3, 'l2gradient': False}}
+  classification_evaluation: {'occupancy_threshold_ratio': 0.05, 'occupied_label': 1, 'empty_label': 0}
+
+Rank   5 | Exp  122 | accuracy=0.977381 | TP=397 TN=424 FP=8 FN=11
+  preprocessing: {'filter_name': 'median', 'kernel_size': 7}
+  edge_detection: {'detector_name': 'canny', 'canny': {'threshold1': 30, 'threshold2': 120, 'aperture_size': 3, 'l2gradient': False}}
+  classification_evaluation: {'occupancy_threshold_ratio': 0.04, 'occupied_label': 1, 'empty_label': 0}
+
+Rank   6 | Exp  107 | accuracy=0.977381 | TP=398 TN=423 FP=9 FN=10
+  preprocessing: {'filter_name': 'median', 'kernel_size': 5}
+  edge_detection: {'detector_name': 'canny', 'canny': {'threshold1': 50, 'threshold2': 150, 'aperture_size': 3, 'l2gradient': False}}
+  classification_evaluation: {'occupancy_threshold_ratio': 0.04, 'occupied_label': 1, 'empty_label': 0}
+
+Rank   7 | Exp  110 | accuracy=0.977381 | TP=403 TN=418 FP=14 FN=5
+  preprocessing: {'filter_name': 'median', 'kernel_size': 7}
+  edge_detection: {'detector_name': 'canny', 'canny': {'threshold1': 20, 'threshold2': 100, 'aperture_size': 3, 'l2gradient': False}}
+  classification_evaluation: {'occupancy_threshold_ratio': 0.04, 'occupied_label': 1, 'empty_label': 0}
+
+Rank   8 | Exp  130 | accuracy=0.977381 | TP=403 TN=418 FP=14 FN=5
+  preprocessing: {'filter_name': 'median', 'kernel_size': 7}
+  edge_detection: {'detector_name': 'canny', 'canny': {'threshold1': 40, 'threshold2': 120, 'aperture_size': 3, 'l2gradient': False}}
+  classification_evaluation: {'occupancy_threshold_ratio': 0.03, 'occupied_label': 1, 'empty_label': 0}
+
+Rank   9 | Exp   65 | accuracy=0.976190 | TP=395 TN=425 FP=7 FN=13
+  preprocessing: {'filter_name': 'gaussian', 'kernel_size': 7}
+  edge_detection: {'detector_name': 'canny', 'canny': {'threshold1': 50, 'threshold2': 100, 'aperture_size': 3, 'l2gradient': False}}
+  classification_evaluation: {'occupancy_threshold_ratio': 0.04, 'occupied_label': 1, 'empty_label': 0}
+
+Rank  10 | Exp  102 | accuracy=0.976190 | TP=396 TN=424 FP=8 FN=12
+  preprocessing: {'filter_name': 'median', 'kernel_size': 5}
+  edge_detection: {'detector_name': 'canny', 'canny': {'threshold1': 50, 'threshold2': 100, 'aperture_size': 3, 'l2gradient': False}}
+  classification_evaluation: {'occupancy_threshold_ratio': 0.05, 'occupied_label': 1, 'empty_label': 0}
+

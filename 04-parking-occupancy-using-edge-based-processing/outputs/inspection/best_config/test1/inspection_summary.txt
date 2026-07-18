@@ -1,0 +1,67 @@
+INSPECTION SUMMARY FOR BEST CONFIGURATION
+========================================================================
+Num samples: 56
+Accuracy: 0.982143
+TP: 4
+TN: 51
+FP: 0
+FN: 1
+
+PER-SPACE DETAILS
+------------------------------------------------------------------------
+space=01 | edge_count=397 | roi_pixel_count=15714 | edge_ratio=0.025264 | predicted=0 | ground_truth=0 | outcome=tn
+space=02 | edge_count=251 | roi_pixel_count=18564 | edge_ratio=0.013521 | predicted=0 | ground_truth=0 | outcome=tn
+space=03 | edge_count=0 | roi_pixel_count=22464 | edge_ratio=0.000000 | predicted=0 | ground_truth=0 | outcome=tn
+space=04 | edge_count=105 | roi_pixel_count=26136 | edge_ratio=0.004017 | predicted=0 | ground_truth=0 | outcome=tn
+space=05 | edge_count=105 | roi_pixel_count=30240 | edge_ratio=0.003472 | predicted=0 | ground_truth=0 | outcome=tn
+space=06 | edge_count=229 | roi_pixel_count=32928 | edge_ratio=0.006955 | predicted=0 | ground_truth=0 | outcome=tn
+space=07 | edge_count=361 | roi_pixel_count=36708 | edge_ratio=0.009834 | predicted=0 | ground_truth=0 | outcome=tn
+space=08 | edge_count=1082 | roi_pixel_count=36960 | edge_ratio=0.029275 | predicted=0 | ground_truth=1 | outcome=fn
+space=09 | edge_count=124 | roi_pixel_count=36024 | edge_ratio=0.003442 | predicted=0 | ground_truth=0 | outcome=tn
+space=10 | edge_count=326 | roi_pixel_count=33674 | edge_ratio=0.009681 | predicted=0 | ground_truth=0 | outcome=tn
+space=11 | edge_count=166 | roi_pixel_count=29866 | edge_ratio=0.005558 | predicted=0 | ground_truth=0 | outcome=tn
+space=12 | edge_count=187 | roi_pixel_count=25894 | edge_ratio=0.007222 | predicted=0 | ground_truth=0 | outcome=tn
+space=13 | edge_count=171 | roi_pixel_count=22140 | edge_ratio=0.007724 | predicted=0 | ground_truth=0 | outcome=tn
+space=14 | edge_count=44 | roi_pixel_count=18042 | edge_ratio=0.002439 | predicted=0 | ground_truth=0 | outcome=tn
+space=15 | edge_count=267 | roi_pixel_count=15960 | edge_ratio=0.016729 | predicted=0 | ground_truth=0 | outcome=tn
+space=16 | edge_count=313 | roi_pixel_count=13020 | edge_ratio=0.024040 | predicted=0 | ground_truth=0 | outcome=tn
+space=17 | edge_count=10 | roi_pixel_count=13386 | edge_ratio=0.000747 | predicted=0 | ground_truth=0 | outcome=tn
+space=18 | edge_count=10 | roi_pixel_count=14098 | edge_ratio=0.000709 | predicted=0 | ground_truth=0 | outcome=tn
+space=19 | edge_count=137 | roi_pixel_count=13992 | edge_ratio=0.009791 | predicted=0 | ground_truth=0 | outcome=tn
+space=20 | edge_count=174 | roi_pixel_count=14706 | edge_ratio=0.011832 | predicted=0 | ground_truth=0 | outcome=tn
+space=21 | edge_count=132 | roi_pixel_count=14820 | edge_ratio=0.008907 | predicted=0 | ground_truth=0 | outcome=tn
+space=22 | edge_count=30 | roi_pixel_count=14672 | edge_ratio=0.002045 | predicted=0 | ground_truth=0 | outcome=tn
+space=23 | edge_count=38 | roi_pixel_count=14652 | edge_ratio=0.002594 | predicted=0 | ground_truth=0 | outcome=tn
+space=24 | edge_count=156 | roi_pixel_count=13231 | edge_ratio=0.011790 | predicted=0 | ground_truth=0 | outcome=tn
+space=25 | edge_count=33 | roi_pixel_count=13872 | edge_ratio=0.002379 | predicted=0 | ground_truth=0 | outcome=tn
+space=26 | edge_count=242 | roi_pixel_count=12600 | edge_ratio=0.019206 | predicted=0 | ground_truth=0 | outcome=tn
+space=27 | edge_count=78 | roi_pixel_count=11040 | edge_ratio=0.007065 | predicted=0 | ground_truth=0 | outcome=tn
+space=28 | edge_count=913 | roi_pixel_count=11316 | edge_ratio=0.080682 | predicted=1 | ground_truth=1 | outcome=tp
+space=29 | edge_count=531 | roi_pixel_count=8988 | edge_ratio=0.059079 | predicted=1 | ground_truth=1 | outcome=tp
+space=30 | edge_count=620 | roi_pixel_count=8466 | edge_ratio=0.073234 | predicted=1 | ground_truth=1 | outcome=tp
+space=31 | edge_count=66 | roi_pixel_count=9090 | edge_ratio=0.007261 | predicted=0 | ground_truth=0 | outcome=tn
+space=32 | edge_count=60 | roi_pixel_count=9506 | edge_ratio=0.006312 | predicted=0 | ground_truth=0 | outcome=tn
+space=33 | edge_count=144 | roi_pixel_count=9021 | edge_ratio=0.015963 | predicted=0 | ground_truth=0 | outcome=tn
+space=34 | edge_count=193 | roi_pixel_count=8832 | edge_ratio=0.021852 | predicted=0 | ground_truth=0 | outcome=tn
+space=35 | edge_count=0 | roi_pixel_count=9393 | edge_ratio=0.000000 | predicted=0 | ground_truth=0 | outcome=tn
+space=36 | edge_count=133 | roi_pixel_count=8832 | edge_ratio=0.015059 | predicted=0 | ground_truth=0 | outcome=tn
+space=37 | edge_count=152 | roi_pixel_count=9016 | edge_ratio=0.016859 | predicted=0 | ground_truth=0 | outcome=tn
+space=38 | edge_count=178 | roi_pixel_count=8700 | edge_ratio=0.020460 | predicted=0 | ground_truth=0 | outcome=tn
+space=39 | edge_count=68 | roi_pixel_count=8505 | edge_ratio=0.007995 | predicted=0 | ground_truth=0 | outcome=tn
+space=40 | edge_count=0 | roi_pixel_count=7875 | edge_ratio=0.000000 | predicted=0 | ground_truth=0 | outcome=tn
+space=41 | edge_count=177 | roi_pixel_count=8103 | edge_ratio=0.021844 | predicted=0 | ground_truth=0 | outcome=tn
+space=42 | edge_count=522 | roi_pixel_count=3591 | edge_ratio=0.145363 | predicted=1 | ground_truth=1 | outcome=tp
+space=43 | edge_count=44 | roi_pixel_count=3843 | edge_ratio=0.011449 | predicted=0 | ground_truth=0 | outcome=tn
+space=44 | edge_count=92 | roi_pixel_count=4095 | edge_ratio=0.022466 | predicted=0 | ground_truth=0 | outcome=tn
+space=45 | edge_count=73 | roi_pixel_count=4080 | edge_ratio=0.017892 | predicted=0 | ground_truth=0 | outcome=tn
+space=46 | edge_count=57 | roi_pixel_count=3905 | edge_ratio=0.014597 | predicted=0 | ground_truth=0 | outcome=tn
+space=47 | edge_count=24 | roi_pixel_count=3976 | edge_ratio=0.006036 | predicted=0 | ground_truth=0 | outcome=tn
+space=48 | edge_count=100 | roi_pixel_count=3750 | edge_ratio=0.026667 | predicted=0 | ground_truth=0 | outcome=tn
+space=49 | edge_count=14 | roi_pixel_count=3528 | edge_ratio=0.003968 | predicted=0 | ground_truth=0 | outcome=tn
+space=50 | edge_count=14 | roi_pixel_count=3600 | edge_ratio=0.003889 | predicted=0 | ground_truth=0 | outcome=tn
+space=51 | edge_count=0 | roi_pixel_count=3672 | edge_ratio=0.000000 | predicted=0 | ground_truth=0 | outcome=tn
+space=52 | edge_count=54 | roi_pixel_count=3960 | edge_ratio=0.013636 | predicted=0 | ground_truth=0 | outcome=tn
+space=53 | edge_count=74 | roi_pixel_count=3696 | edge_ratio=0.020022 | predicted=0 | ground_truth=0 | outcome=tn
+space=54 | edge_count=20 | roi_pixel_count=3960 | edge_ratio=0.005051 | predicted=0 | ground_truth=0 | outcome=tn
+space=55 | edge_count=0 | roi_pixel_count=3844 | edge_ratio=0.000000 | predicted=0 | ground_truth=0 | outcome=tn
+space=56 | edge_count=70 | roi_pixel_count=4290 | edge_ratio=0.016317 | predicted=0 | ground_truth=0 | outcome=tn
