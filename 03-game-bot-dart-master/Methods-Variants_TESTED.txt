@@ -1,0 +1,33 @@
+cv2.TM_SQDIFF_NORMED
+
+python3 main.py = 45 | 84 | 48 | 85 | 87 = 69.8   2. = 43 | 44 | 
+
+python3 main.py --enable-prediction --cooldown 0.7 --prediction-scale 0.30 = 48 | 48 | 87 | 45 
+
+python3 main.py --enable-prediction --cooldown 0.7 --prediction-scale 0.40 = 49 | 41 | 47
+
+
+
+cv2.TM_CCOEFF_NORMED
+python3 main.py --enable-prediction --cooldown 0.7 --prediction-scale 0.30 = 43 | 43 | 42 | 44 = 43
+
+python3 main.py --enable-prediction --prediction-scale 0.35 --prediction-direction-consistency 0.80 = 42 | 44 | 43 | 44
+
+
+python3 main.py = 45 | 44 | 45 | 43 = 44.25 (default: cooldown 0.7, --prediction-scale 0.35, --prediction-direction-consistency 0.80
+
+python3 main.py --enable-prediction --cooldown 0.7 --prediction-scale 0.35 = 43 | 46 | 45 | 43 |45 = 44.4
+
+python3 main.py --enable-prediction --cooldown 0.7 --prediction-scale 0.40 = 44 | 44 | 44 | 42 | 44 = 43.6
+
+python3 main.py --enable-prediction --prediction-scale 0.35 --prediction-direction-consistency 0.90 = 41 | 42 | 43 | 43 | 44 = 42.6
+
+python3 main.py --enable-prediction --prediction-scale 0.35 --prediction-direction-consistency 0.85 = 42 | 42 | 42 | 41 = 41.8
+
+ 
+
+
+
+
+
+
