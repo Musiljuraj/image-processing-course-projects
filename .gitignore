@@ -1,76 +1,21 @@
-# --- Virtual environments (keep OUT of git) ---
-.venv/
-.venv-*/
-venv/
-env/
-
-# --- Python cache / bytecode ---
+# Python-generated files
 __pycache__/
 *.py[cod]
-*$py.class
 
-# --- Packaging / build artifacts ---
-build/
-dist/
-*.egg-info/
-.eggs/
+# Virtual environments
+venv/
+.venv/
+env/
 
-# --- Jupyter ---
-.ipynb_checkpoints/
-
-# --- Logs ---
-*.log
-
-# --- Test / tooling caches ---
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.cache/
-.coverage
-htmlcov/
-
-# --- IDE/editor files ---
-.vscode/
+# IDE files
 .idea/
-*.iml
+.vscode/
 
-# --- OS cruft ---
+# Operating-system files
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# --- Environment variables / secrets ---
-.env
-.env.*
-
-# --- Ultralytics / YOLO common outputs ---
-runs/
-wandb/
-
-# Optional: ignore exported models / weights (can be big)
-# If you WANT to keep trained weights in git, comment these out.
-*.pt
-*.pth
-*.onnx
-*.engine
-*:Zone.Identifier
-DU/07_eye_lbp/input/archives/
-
-# Neural net assignment dataset
-DU/08_neural_netw/data/
-
-# Optional: other local archives
-*.zip
-
-# --- Images ---
-*.jpg
-*.jpeg
-*.png
-*.gif
-*.webp
-*.bmp
-*.tif
-*.tiff
-*.svg
-*.ico
-*.heic
-*.heif
+# Temporary files
+*.log
+*.tmp
