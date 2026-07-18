@@ -1,0 +1,174 @@
+=== Eye LBP experiment search summary ===
+Experiment count: 3
+Training subset limit per class: 150
+
+=== Rank 1 / Experiment #3 ===
+Accuracy [%]:                         90.83
+Compared frames:                      120
+Correct predictions:                  109
+Processed frames:                     120
+Stopped early:                        False
+
+Timing [ms]:
+  model build total:                  399.061
+  training feature preparation:       398.461
+  training only:                      0.600
+  whole experiment total:             6445.937
+  localization mean per frame:        31.177
+  classification mean per frame:      17.254
+  total frame mean per frame:         48.845
+
+Training sample count:                300
+Feature count:                        40
+Class counts:                         {'close': 150, 'open': 150}
+
+Preprocessing config:                 {'grayscale': True, 'target_size': (80, 40), 'crop_analysis_band': True, 'analysis_top_ratio': 0.15, 'analysis_bottom_ratio': 0.85, 'contrast_method': 'equalize', 'clahe_clip_limit': 2.0, 'clahe_tile_grid_size': (8, 8), 'filter_name': 'gaussian', 'gaussian_kernel_size': (5, 5), 'median_blur_size': 5}
+LBP config:                           {'neighbors': 8, 'radius': 2.0, 'method': 'uniform', 'grid_shape': (2, 2), 'normalize_histogram': True}
+Classifier config:                    {'classifier_name': 'knn', 'n_neighbors': 3}
+
+=== Evaluation summary ===
+Predicted labels:      120
+Ground-truth labels:   533
+Compared labels:       120
+
+Correct predictions:   109
+Accuracy [%]:          90.83
+
+Confusion-style counts:
+  open  -> open:       76
+  open  -> close:      5
+  close -> open:       6
+  close -> close:      33
+  other:               0
+
+Localization timing [ms]:
+  measured frames:     120
+  mean:                31.177
+  min:                 20.145
+  max:                 81.750
+
+Classification timing [ms]:
+  measured frames:     120
+  mean:                17.254
+  min:                 5.239
+  max:                 51.487
+
+Total frame-processing timing [ms]:
+  measured frames:     120
+  mean:                48.845
+  min:                 29.733
+  max:                 100.339
+
+=== Rank 2 / Experiment #1 ===
+Accuracy [%]:                         45.83
+Compared frames:                      120
+Correct predictions:                  55
+Processed frames:                     120
+Stopped early:                        False
+
+Timing [ms]:
+  model build total:                  572.849
+  training feature preparation:       539.980
+  training only:                      32.868
+  whole experiment total:             6098.777
+  localization mean per frame:        35.109
+  classification mean per frame:      7.861
+  total frame mean per frame:         43.432
+
+Training sample count:                300
+Feature count:                        10
+Class counts:                         {'close': 150, 'open': 150}
+
+Preprocessing config:                 {'grayscale': True, 'target_size': (80, 40), 'crop_analysis_band': True, 'analysis_top_ratio': 0.15, 'analysis_bottom_ratio': 0.85, 'contrast_method': 'equalize', 'clahe_clip_limit': 2.0, 'clahe_tile_grid_size': (8, 8), 'filter_name': 'gaussian', 'gaussian_kernel_size': (5, 5), 'median_blur_size': 5}
+LBP config:                           {'neighbors': 8, 'radius': 1.0, 'method': 'uniform', 'grid_shape': (1, 1), 'normalize_histogram': True}
+Classifier config:                    {'classifier_name': 'knn', 'n_neighbors': 3}
+
+=== Evaluation summary ===
+Predicted labels:      120
+Ground-truth labels:   533
+Compared labels:       120
+
+Correct predictions:   55
+Accuracy [%]:          45.83
+
+Confusion-style counts:
+  open  -> open:       16
+  open  -> close:      65
+  close -> open:       0
+  close -> close:      39
+  other:               0
+
+Localization timing [ms]:
+  measured frames:     120
+  mean:                35.109
+  min:                 23.156
+  max:                 149.780
+
+Classification timing [ms]:
+  measured frames:     120
+  mean:                7.861
+  min:                 3.308
+  max:                 10.654
+
+Total frame-processing timing [ms]:
+  measured frames:     120
+  mean:                43.432
+  min:                 29.956
+  max:                 154.827
+
+=== Rank 3 / Experiment #2 ===
+Accuracy [%]:                         34.17
+Compared frames:                      120
+Correct predictions:                  41
+Processed frames:                     120
+Stopped early:                        False
+
+Timing [ms]:
+  model build total:                  443.017
+  training feature preparation:       442.262
+  training only:                      0.754
+  whole experiment total:             6182.646
+  localization mean per frame:        30.398
+  classification mean per frame:      15.521
+  total frame mean per frame:         46.291
+
+Training sample count:                300
+Feature count:                        20
+Class counts:                         {'close': 150, 'open': 150}
+
+Preprocessing config:                 {'grayscale': True, 'target_size': (80, 40), 'crop_analysis_band': True, 'analysis_top_ratio': 0.15, 'analysis_bottom_ratio': 0.85, 'contrast_method': 'equalize', 'clahe_clip_limit': 2.0, 'clahe_tile_grid_size': (8, 8), 'filter_name': 'gaussian', 'gaussian_kernel_size': (5, 5), 'median_blur_size': 5}
+LBP config:                           {'neighbors': 8, 'radius': 1.0, 'method': 'uniform', 'grid_shape': (2, 1), 'normalize_histogram': True}
+Classifier config:                    {'classifier_name': 'knn', 'n_neighbors': 3}
+
+=== Evaluation summary ===
+Predicted labels:      120
+Ground-truth labels:   533
+Compared labels:       120
+
+Correct predictions:   41
+Accuracy [%]:          34.17
+
+Confusion-style counts:
+  open  -> open:       6
+  open  -> close:      75
+  close -> open:       4
+  close -> close:      35
+  other:               0
+
+Localization timing [ms]:
+  measured frames:     120
+  mean:                30.398
+  min:                 21.439
+  max:                 88.775
+
+Classification timing [ms]:
+  measured frames:     120
+  mean:                15.521
+  min:                 5.641
+  max:                 141.869
+
+Total frame-processing timing [ms]:
+  measured frames:     120
+  mean:                46.291
+  min:                 31.493
+  max:                 181.042

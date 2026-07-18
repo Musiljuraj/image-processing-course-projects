@@ -1,0 +1,11 @@
+=== Best experiment summary ===
+Experiment index:                     3
+Accuracy [%]:                         90.83
+Compared frames:                      120
+Correct predictions:                  109
+Total frame mean [ms]:                48.845
+Classification mean [ms]:             17.254
+
+Preprocessing config:                 {'grayscale': True, 'target_size': (80, 40), 'crop_analysis_band': True, 'analysis_top_ratio': 0.15, 'analysis_bottom_ratio': 0.85, 'contrast_method': 'equalize', 'clahe_clip_limit': 2.0, 'clahe_tile_grid_size': (8, 8), 'filter_name': 'gaussian', 'gaussian_kernel_size': (5, 5), 'median_blur_size': 5}
+LBP config:                           {'neighbors': 8, 'radius': 2.0, 'method': 'uniform', 'grid_shape': (2, 2), 'normalize_histogram': True}
+Classifier config:                    {'classifier_name': 'knn', 'n_neighbors': 3}

@@ -1,0 +1,113 @@
+PROJECT SUMMARY — VIDEO EYE-STATE RECOGNITION USING HAAR LOCALIZATION + LBP CLASSIFICATION
+
+Purpose:
+This project detects a face in a video, localizes the eyes (and optionally mouth), and classifies the eye state frame-by-frame as OPEN or CLOSE. Its final goal is not only runtime eye-state recognition on the target video, but also automatic comparison of several LBP configurations and final rerun with the best one.
+
+Mechanism:
+The project has two layers. First, it builds a trained eye-state model from the mrlEyes training dataset: dataset image -> preprocessing -> LBP descriptor -> classifier training. Second, it runs the real video pipeline: frame -> grayscale -> face detection -> stable main-face selection -> eye localization -> eye ROI extraction -> same preprocessing -> LBP feature extraction -> classifier prediction for each eye -> aggregation into one frame-level OPEN/CLOSE label -> storage of timings and predictions -> comparison with ground truth labels from eye-state.txt.
+
+Preprocessing normalizes eye images to a fixed representation (grayscale, resize to 80x40, optional central analysis-band crop, contrast normalization, light filtering). LBP then converts the normalized eye image into histogram-based texture features. The classifier layer supports KNN and linear SVM; the recommended experiment search uses KNN (k=3) and compares 3 LBP variants. Runtime classification is done by the LBP model; if needed, the old heuristic eye-state module is used as fallback.
+
+Whole call stack:
+1. Final automatic version:
+   auto_select_and_run.py -> main() -> auto_select_best_and_run_final()
+   -> experiment_search.run_experiment_search()
+   -> build experiment configs + load shared training records
+   -> for each experiment: build_eye_lbp_model_from_training_records() -> process video exactly like runtime pipeline -> evaluate_results()
+   -> rank results -> get_best_experiment_result() -> extract_runtime_configs_from_experiment_result()
+   -> main.run_final_pipeline() with winning configs
+   -> save search report, winner summary, final rerun log/report, and one top-level auto-selection summary.
+
+2. Manual/default runtime version:
+   main.py -> main() -> run_final_pipeline()
+   -> get_project_paths(), ensure_output_directories(), get_output_file_paths()
+   -> eye_lbp_classifier.build_eye_lbp_model()
+   -> eye_training_io.load_all_eye_training_records()
+   -> eye_preprocessing.preprocess_*()
+   -> lbp_features.extract_* / compute_*()
+   -> eye_lbp_dataset.build_training_matrix_and_labels()
+   -> eye_lbp_classifier.train_classifier()
+   -> detectors.load_cascades()
+   -> open video and for each frame:
+      detect_faces() -> select_main_face() -> detect_face_parts()
+      -> eye_state_lbp.classify_eye_state_lbp()
+         -> classify_single_eye_lbp()
+         -> eye_state.extract_eye_roi()
+         -> eye_lbp_dataset.prepare_runtime_feature_record()
+         -> eye_preprocessing.preprocess_runtime_eye_roi()
+         -> lbp_features.extract_lbp_features_from_runtime_eye_image()
+         -> eye_lbp_classifier.predict_from_runtime_feature_record()
+         -> aggregate_eye_predictions()
+      -> store_frame_result()
+   -> evaluation.evaluate_results()
+   -> evaluation.save_evaluation_report()
+
+Brief module/function roles:
+- auto_select_and_run.py: highest orchestration layer; runs experiment search, selects winner, executes final rerun, saves combined summary.
+- experiment_search.py: systematic comparison layer; generates configuration combinations, trains/evaluates each experiment, ranks them, saves search reports.
+- main.py: reusable end-to-end runtime pipeline for one chosen configuration.
+- detectors.py: Haar cascade localization; loads cascades, detects faces, selects temporally stable main face, detects eyes/mouth inside face ROI.
+- eye_training_io.py: training-data loader; reads mrlEyes images from disk, parses filename metadata, builds structured training records.
+- eye_preprocessing.py: shared normalization of eye images/ROIs before LBP.
+- lbp_features.py: computes LBP image and histogram descriptor, including grid-based spatial LBP.
+- eye_lbp_dataset.py: bridge from structured eye records to X_train / y_train and runtime feature records.
+- eye_lbp_classifier.py: validates classifier config, trains model, predicts labels/scores, builds reusable model bundle.
+- eye_state_lbp.py: runtime eye-state decision layer; classifies each detected eye ROI and aggregates to one frame label.
+- eye_state.py: older heuristic eye-state classifier; reused mainly for ROI extraction and optional fallback.
+- evaluation.py: compares predicted OPEN/CLOSE sequence with ground truth, computes confusion-style counts, accuracy, and timing statistics, formats/saves report.
+
+Required input data and where they must be stored:
+Project is path-driven; there are no required CLI arguments. Inputs must exist in fixed project-relative locations:
+- input/video/fusek_face_car_01.avi                      = target video
+- input/ground_truth/eye-state.txt                       = one eye-state label per line
+- input/training/mrlEyes_2018_01/                        = extracted training eye dataset
+- input/cascades/face/haarcascade_frontalface_default.xml
+- input/cascades/face/haarcascade_profileface.xml
+- input/cascades/eye/eye_cascade_fusek.xml
+- input/cascades/mouth/haarcascade_smile.xml
+
+Training dataset condition:
+The training dataset images must follow the mrlEyes filename format:
+subject_id_image_id_gender_glasses_eye_state_reflections_lighting_sensor
+example: s0001_00001_0_0_0_0_0_01.png
+Binary labels are 0 = close, 1 = open.
+
+What the project produces as output:
+Manual/default run (main.py):
+- output/logs/run_log.txt
+- output/reports/evaluation_report.txt
+- console summary of accuracy and timings
+
+Automatic best-configuration run (auto_select_and_run.py):
+- output/experiments/results/eye_experiment_search_report.txt
+- output/experiments/results/best_experiment_summary.txt
+- output/experiments/results/auto_selected_best_summary.txt
+- output/logs/run_log_auto_selected_best.txt
+- output/reports/evaluation_report_auto_selected_best.txt
+- console summary of selected experiment and final output paths
+
+Important note:
+The code creates output/annotated_video and output/frames directories, but in the current uploaded version it mainly saves text reports/logs; it does not actually export annotated video or per-frame image files as a primary output.
+
+Functional run commands:
+1. Manual default full pipeline:
+   python main.py
+
+2. Automatic search -> best configuration selection -> final rerun:
+   python auto_select_and_run.py
+
+3. Experiment search only (report generation without final rerun):
+   python experiment_search.py
+
+4. Optional explicit Python call with preview enabled:
+   python -c "from main import run_final_pipeline; run_final_pipeline(run_name='preview_run', show_preview=True, output_file_prefix='preview_run', print_summary=True)"
+
+Run procedure / initial checks:
+1. Make sure Python environment contains at least OpenCV (cv2), NumPy, and scikit-learn.
+2. Place the project files in one project root and create the exact input/ and output/ structure above.
+3. Check that all 4 cascade XML files exist and are readable.
+4. Check that input/video/fusek_face_car_01.avi exists and can be opened.
+5. Check that input/ground_truth/eye-state.txt exists, is non-empty, and contains valid open/close labels line-by-line.
+6. Check that input/training/mrlEyes_2018_01 exists and contains readable eye images with valid mrlEyes filenames from both classes (open and close must both be present).
+7. Run either python main.py for one default final run, or python auto_select_and_run.py for the full automatic solution.
+8. After completion, inspect output/logs/, output/reports/, and output/experiments/results/ for the generated text reports.

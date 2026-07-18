@@ -1,0 +1,51 @@
+=== Run configuration ===
+Run name: manual_default_run
+Project root: /home/musiljuraj/3rls/ZAO/DU/assignments_Final/07_EyeRecognition_LBP
+Video path: /home/musiljuraj/3rls/ZAO/DU/assignments_Final/07_EyeRecognition_LBP/input/video/fusek_face_car_01.avi
+Ground truth path: /home/musiljuraj/3rls/ZAO/DU/assignments_Final/07_EyeRecognition_LBP/input/ground_truth/eye-state.txt
+Face detection downscale factor: 0.75
+Mouth detection enabled: True
+Live preview enabled: False
+Preview every N frames: 1
+LBP fallback to heuristic: True
+LBP fallback frame label: close
+LBP preprocessing config: {'grayscale': True, 'target_size': (80, 40), 'crop_analysis_band': True, 'analysis_top_ratio': 0.15, 'analysis_bottom_ratio': 0.85, 'contrast_method': 'equalize', 'clahe_clip_limit': 2.0, 'clahe_tile_grid_size': (8, 8), 'filter_name': 'gaussian', 'gaussian_kernel_size': (5, 5), 'median_blur_size': 5}
+LBP feature config: {'neighbors': 8, 'radius': 1.0, 'method': 'uniform', 'grid_shape': (1, 1), 'normalize_histogram': True}
+LBP classifier config: {'classifier_name': 'knn', 'n_neighbors': 3}
+LBP training sample count: 30943
+LBP feature count: 10
+LBP training class counts: {'close': 21083, 'open': 9860}
+LBP model build time [ms]: 64589.812
+
+=== Evaluation summary ===
+Predicted labels:      533
+Ground-truth labels:   533
+Compared labels:       533
+
+Correct predictions:   319
+Accuracy [%]:          59.85
+
+Confusion-style counts:
+  open  -> open:       197
+  open  -> close:      42
+  close -> open:       172
+  close -> close:      122
+  other:               0
+
+Localization timing [ms]:
+  measured frames:     533
+  mean:                37.012
+  min:                 16.723
+  max:                 119.755
+
+Classification timing [ms]:
+  measured frames:     533
+  mean:                6.507
+  min:                 0.020
+  max:                 15.418
+
+Total frame-processing timing [ms]:
+  measured frames:     533
+  mean:                43.858
+  min:                 16.996
+  max:                 132.230

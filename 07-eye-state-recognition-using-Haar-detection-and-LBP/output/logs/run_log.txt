@@ -1,0 +1,48 @@
+[2026-04-17 17:01:24] === ZAO Assignment 06 ===
+[2026-04-17 17:01:24] Run name: manual_default_run
+[2026-04-17 17:01:24] Project started.
+[2026-04-17 17:01:24] 
+[2026-04-17 17:01:24] Building startup-trained LBP eye-state model...
+[2026-04-17 17:02:28] LBP eye-state model built successfully.
+[2026-04-17 17:02:28] Training samples: 30943, feature count: 10
+[2026-04-17 17:02:28] Class counts: {'close': 21083, 'open': 9860}
+[2026-04-17 17:02:28] Model build time [ms]: 64589.812
+[2026-04-17 17:02:28] 
+[2026-04-17 17:02:28] Project root: /home/musiljuraj/3rls/ZAO/DU/assignments_Final/07_EyeRecognition_LBP
+[2026-04-17 17:02:28] Video path:   /home/musiljuraj/3rls/ZAO/DU/assignments_Final/07_EyeRecognition_LBP/input/video/fusek_face_car_01.avi
+[2026-04-17 17:02:28] Cascades loaded successfully.
+[2026-04-17 17:02:28] Frontal face detector initialized.
+[2026-04-17 17:02:28] Profile face detector initialized (fallback mode).
+[2026-04-17 17:02:28] Face detection downscale factor: 0.75
+[2026-04-17 17:02:28] Eye detector initialized.
+[2026-04-17 17:02:28] Mouth/smile detector initialized.
+[2026-04-17 17:02:28] LBP eye-state classifier initialized.
+[2026-04-17 17:02:28] Evaluation module initialized.
+[2026-04-17 17:02:28] 
+[2026-04-17 17:02:28] Video opened successfully.
+[2026-04-17 17:02:28] Reading frames...
+[2026-04-17 17:02:28] 
+[2026-04-17 17:02:30] Processed frame: 30, detected faces: 1, detected eyes: 2, detected mouth: 1, eye_state: open, localization_ms: 31.931, classification_ms: 7.196, total_frame_ms: 39.406
+[2026-04-17 17:02:31] Processed frame: 60, detected faces: 1, detected eyes: 2, detected mouth: 1, eye_state: open, localization_ms: 27.178, classification_ms: 7.158, total_frame_ms: 35.217
+[2026-04-17 17:02:32] Processed frame: 90, detected faces: 1, detected eyes: 2, detected mouth: 1, eye_state: open, localization_ms: 26.931, classification_ms: 7.263, total_frame_ms: 34.659
+[2026-04-17 17:02:33] Processed frame: 120, detected faces: 1, detected eyes: 2, detected mouth: 1, eye_state: open, localization_ms: 32.995, classification_ms: 7.530, total_frame_ms: 40.855
+[2026-04-17 17:02:35] Processed frame: 150, detected faces: 1, detected eyes: 2, detected mouth: 1, eye_state: open, localization_ms: 30.469, classification_ms: 7.399, total_frame_ms: 38.118
+[2026-04-17 17:02:36] Processed frame: 180, detected faces: 0, detected eyes: 0, detected mouth: 0, eye_state: close, localization_ms: 78.374, classification_ms: 0.030, total_frame_ms: 78.676
+[2026-04-17 17:02:38] Processed frame: 210, detected faces: 1, detected eyes: 2, detected mouth: 1, eye_state: close, localization_ms: 30.533, classification_ms: 8.670, total_frame_ms: 39.680
+[2026-04-17 17:02:39] Processed frame: 240, detected faces: 1, detected eyes: 2, detected mouth: 1, eye_state: open, localization_ms: 119.755, classification_ms: 12.151, total_frame_ms: 132.230
+[2026-04-17 17:02:41] Processed frame: 270, detected faces: 1, detected eyes: 2, detected mouth: 1, eye_state: open, localization_ms: 28.334, classification_ms: 7.035, total_frame_ms: 35.621
+[2026-04-17 17:02:42] Processed frame: 300, detected faces: 1, detected eyes: 2, detected mouth: 0, eye_state: open, localization_ms: 23.529, classification_ms: 8.385, total_frame_ms: 32.203
+[2026-04-17 17:02:44] Processed frame: 330, detected faces: 1, detected eyes: 2, detected mouth: 1, eye_state: open, localization_ms: 30.770, classification_ms: 6.453, total_frame_ms: 37.601
+[2026-04-17 17:02:45] Processed frame: 360, detected faces: 1, detected eyes: 2, detected mouth: 1, eye_state: close, localization_ms: 26.401, classification_ms: 6.748, total_frame_ms: 33.364
+[2026-04-17 17:02:46] Processed frame: 390, detected faces: 1, detected eyes: 1, detected mouth: 0, eye_state: open, localization_ms: 17.264, classification_ms: 3.836, total_frame_ms: 21.431
+[2026-04-17 17:02:48] Processed frame: 420, detected faces: 0, detected eyes: 0, detected mouth: 0, eye_state: close, localization_ms: 68.750, classification_ms: 0.029, total_frame_ms: 68.994
+[2026-04-17 17:02:49] Processed frame: 450, detected faces: 1, detected eyes: 2, detected mouth: 1, eye_state: open, localization_ms: 26.730, classification_ms: 7.428, total_frame_ms: 34.451
+[2026-04-17 17:02:51] Processed frame: 480, detected faces: 1, detected eyes: 2, detected mouth: 1, eye_state: open, localization_ms: 30.467, classification_ms: 7.231, total_frame_ms: 38.310
+[2026-04-17 17:02:52] Processed frame: 510, detected faces: 1, detected eyes: 2, detected mouth: 1, eye_state: open, localization_ms: 25.367, classification_ms: 6.674, total_frame_ms: 32.250
+[2026-04-17 17:02:52] 
+[2026-04-17 17:02:52] Video reading finished.
+[2026-04-17 17:02:52] Total frames processed: 533
+[2026-04-17 17:02:52] Stored frame results:   533
+[2026-04-17 17:02:52] 
+[2026-04-17 17:02:53] Evaluation report saved to: /home/musiljuraj/3rls/ZAO/DU/assignments_Final/07_EyeRecognition_LBP/output/reports/evaluation_report.txt
+[2026-04-17 17:02:53] Run log saved to: /home/musiljuraj/3rls/ZAO/DU/assignments_Final/07_EyeRecognition_LBP/output/logs/run_log.txt

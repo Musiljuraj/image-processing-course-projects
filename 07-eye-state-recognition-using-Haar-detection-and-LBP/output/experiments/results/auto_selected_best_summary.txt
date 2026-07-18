@@ -1,0 +1,30 @@
+=== Automatic best-configuration selection summary ===
+
+--- Best experiment selected from search ---
+=== Best experiment summary ===
+Experiment index:                     3
+Accuracy [%]:                         90.83
+Compared frames:                      120
+Correct predictions:                  109
+Total frame mean [ms]:                48.845
+Classification mean [ms]:             17.254
+
+Preprocessing config:                 {'grayscale': True, 'target_size': (80, 40), 'crop_analysis_band': True, 'analysis_top_ratio': 0.15, 'analysis_bottom_ratio': 0.85, 'contrast_method': 'equalize', 'clahe_clip_limit': 2.0, 'clahe_tile_grid_size': (8, 8), 'filter_name': 'gaussian', 'gaussian_kernel_size': (5, 5), 'median_blur_size': 5}
+LBP config:                           {'neighbors': 8, 'radius': 2.0, 'method': 'uniform', 'grid_shape': (2, 2), 'normalize_histogram': True}
+Classifier config:                    {'classifier_name': 'knn', 'n_neighbors': 3}
+
+--- Final full rerun outputs ---
+Run name:                               auto_selected_best_run
+Run log path:                           /home/musiljuraj/3rls/ZAO/DU/assignments_Final/07_EyeRecognition_LBP/output/logs/run_log_auto_selected_best.txt
+Evaluation report path:                 /home/musiljuraj/3rls/ZAO/DU/assignments_Final/07_EyeRecognition_LBP/output/reports/evaluation_report_auto_selected_best.txt
+Model build time [ms]:                  63948.041
+Frame count processed:                  533
+Frame results stored:                   533
+
+--- Final full rerun evaluation ---
+Compared labels:                        533
+Correct predictions:                    406
+Accuracy [%]:                           76.17
+Localization mean [ms]:                 35.258
+Classification mean [ms]:               7.433
+Total frame mean [ms]:                  43.079
